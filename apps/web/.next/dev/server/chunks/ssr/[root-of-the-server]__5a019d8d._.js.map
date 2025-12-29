@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 14, "column": 0}, "map": {"version":3,"sources":["file:///home/mrazcore/Work/steam-inventory-mover/apps/web/app/page.tsx"],"sourcesContent":["export default function HomePage() {\n  return <main>Casemove Web</main>;\n}\n"],"names":[],"mappings":";;;;;;AAAe,SAAS;IACtB,qBAAO,mVAAC;kBAAK;;;;;;AACf"}}]
+}
