@@ -1,13 +1,12 @@
 import Fastify from "fastify";
+import { registerConfig } from "./plugins/config";
 
 const app = Fastify({ logger: true });
+const config = registerConfig(app);
 
 app.get("/health", async () => ({ status: "ok" }));
 
-const port = Number(process.env.PORT ?? 3001);
-const host = process.env.HOST ?? "0.0.0.0";
-
-app.listen({ port, host }).catch((err) => {
+app.listen({ port: config.port, host: config.host }).catch((err) => {
   app.log.error(err);
   process.exit(1);
 });
