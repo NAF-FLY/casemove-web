@@ -10,6 +10,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@casemove/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       fastify:
         specifier: ^4.26.2
         version: 4.29.1

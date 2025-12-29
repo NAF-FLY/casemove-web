@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@casemove/shared-types": ["packages/shared-types/src"],
+      "@casemove/shared-utils": ["packages/shared-utils/src"]
+    }
+  }
+}
