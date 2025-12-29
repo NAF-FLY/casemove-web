@@ -1,1 +1,1 @@
-export type Empty = Record<string, never>;
+export * from "./inventory";
