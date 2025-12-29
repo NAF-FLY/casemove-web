@@ -7,6 +7,10 @@
     "jsx": "preserve",
     "allowJs": true,
     "incremental": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "types": ["node"],
     "plugins": [{ "name": "next" }]
   },
