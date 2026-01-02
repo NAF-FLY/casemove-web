@@ -1,6 +1,6 @@
 node_modules
 docs
-.next/dev
+.next
 
 .env
 .codex
