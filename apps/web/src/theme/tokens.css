@@ -1,0 +1,11 @@
+:root[data-theme="dark"] {
+  --bg: #0A0B12;
+  --panel: #14161F;
+  --panel-soft: #12141D;
+  --border: #323648;
+  --text: #EBEEF5;
+  --text-muted: #8C91AA;
+  --accent: #00E5D4;
+  --accent-soft: #00B4AA;
+  --danger: #FF5A78;
+}

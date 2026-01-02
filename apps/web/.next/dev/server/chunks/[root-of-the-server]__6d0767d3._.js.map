@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 46, "column": 0}, "map": {"version":3,"sources":["file:///home/mrazcore/Work/steam-inventory-mover/apps/web/src/app/api/storage/%5Bid%5D/route.ts"],"sourcesContent":["import { NextResponse } from \"next/server\";\n\ntype Params = {\n  params: Promise<{\n    id: string;\n  }>;\n};\n\nexport async function GET(_: Request, { params }: Params) {\n  const { id } = await params;\n  const baseUrl = process.env.API_URL ?? \"http://localhost:4000\";\n  const response = await fetch(`${baseUrl}/storage/${id}`, {\n    cache: \"no-store\"\n  });\n\n  if (!response.ok) {\n    return NextResponse.json({ items: [] }, { status: response.status });\n  }\n\n  const data = await response.json();\n  return NextResponse.json(data);\n}\n"],"names":[],"mappings":";;;;AAAA;;AAQO,eAAe,IAAI,CAAU,EAAE,EAAE,MAAM,EAAU;IACtD,MAAM,EAAE,EAAE,EAAE,GAAG,MAAM;IACrB,MAAM,UAAU,QAAQ,GAAG,CAAC,OAAO,IAAI;IACvC,MAAM,WAAW,MAAM,MAAM,GAAG,QAAQ,SAAS,EAAE,IAAI,EAAE;QACvD,OAAO;IACT;IAEA,IAAI,CAAC,SAAS,EAAE,EAAE;QAChB,OAAO,qPAAY,CAAC,IAAI,CAAC;YAAE,OAAO,EAAE;QAAC,GAAG;YAAE,QAAQ,SAAS,MAAM;QAAC;IACpE;IAEA,MAAM,OAAO,MAAM,SAAS,IAAI;IAChC,OAAO,qPAAY,CAAC,IAAI,CAAC;AAC3B"}}]
+}

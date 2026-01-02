@@ -1,0 +1,14 @@
+/* [project]/apps/web/src/theme/tokens.css [app-client] (css) */
+:root[data-theme="dark"] {
+  --bg: #0a0b12;
+  --panel: #14161f;
+  --panel-soft: #12141d;
+  --border: #323648;
+  --text: #ebeef5;
+  --text-muted: #8c91aa;
+  --accent: #00e5d4;
+  --accent-soft: #00b4aa;
+  --danger: #ff5a78;
+}
+
+/*# sourceMappingURL=apps_web_src_theme_tokens_css_bad6b30c._.single.css.map*/

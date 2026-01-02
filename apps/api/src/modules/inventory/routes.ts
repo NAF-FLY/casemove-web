@@ -1,6 +1,21 @@
 import type { FastifyInstance } from "fastify";
-import { getInventoryMock } from "./service";
 
-export function registerInventoryRoutes(app: FastifyInstance) {
-  app.get("/inventory", async () => ({ items: getInventoryMock() }));
+import { steamManager } from "../../core/steam-manager";
+
+export async function registerInventoryRoutes(app: FastifyInstance) {
+  app.get("/inventory", async (request, reply) => {
+    if (!request.user) {
+      return reply.code(401).send({ message: "Unauthorized" });
+    }
+
+    try {
+      const client = steamManager.getClient();
+      const items = await client.getInventory();
+
+      return { items };
+    } catch (error) {
+      console.error("Failed to load inventory", error);
+      return reply.code(500).send({ message: "Failed to load inventory" });
+    }
+  });
 }

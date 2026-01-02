@@ -1,10 +1,18 @@
-export interface InventoryItemDTO {
+export type InventoryItemSchemaDTO = {
   id: string;
   name: string;
-  type: string;
-  rarity: string;
-  iconUrl: string;
-  price: number | null;
+  rarity: string | null;
+  weapon: string | null;
+  collection: string | null;
+  image: string | null;
+};
+
+export type InventoryItemDTO = {
+  id: string;
+  appId: number;
+  marketHashName: string;
+  iconUrl: string | null;
+  moveable: boolean;
   tradable: boolean;
-  storageId: string | null;
-}
+  schema?: InventoryItemSchemaDTO | null;
+};

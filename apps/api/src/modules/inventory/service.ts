@@ -4,33 +4,51 @@ export function getInventoryMock(): InventoryItemDTO[] {
   return [
     {
       id: "inv_001",
-      name: "AK-47 | Redline",
-      type: "Rifle",
-      rarity: "Classified",
+      appId: 730,
+      marketHashName: "AK-47 | Redline",
       iconUrl: "https://example.com/icons/ak47-redline.png",
-      price: 12.5,
+      moveable: true,
       tradable: true,
-      storageId: null
+      schema: {
+        id: "skin-ak47-redline",
+        name: "AK-47 | Redline",
+        rarity: "Classified",
+        weapon: "AK-47",
+        collection: "The Phoenix Collection",
+        image: "https://example.com/icons/ak47-redline.png"
+      }
     },
     {
       id: "inv_002",
-      name: "Glock-18 | Fade",
-      type: "Pistol",
-      rarity: "Covert",
+      appId: 730,
+      marketHashName: "Glock-18 | Fade",
       iconUrl: "https://example.com/icons/glock-fade.png",
-      price: 320.0,
+      moveable: true,
       tradable: false,
-      storageId: "storage_01"
+      schema: {
+        id: "skin-glock-fade",
+        name: "Glock-18 | Fade",
+        rarity: "Covert",
+        weapon: "Glock-18",
+        collection: "The Assault Collection",
+        image: "https://example.com/icons/glock-fade.png"
+      }
     },
     {
       id: "inv_003",
-      name: "Sticker | Crown (Foil)",
-      type: "Sticker",
-      rarity: "Contraband",
+      appId: 730,
+      marketHashName: "Sticker | Crown (Foil)",
       iconUrl: "https://example.com/icons/sticker-crown.png",
-      price: null,
+      moveable: true,
       tradable: true,
-      storageId: null
+      schema: {
+        id: "sticker-crown-foil",
+        name: "Sticker | Crown (Foil)",
+        rarity: "Contraband",
+        weapon: null,
+        collection: null,
+        image: "https://example.com/icons/sticker-crown.png"
+      }
     }
   ];
 }
