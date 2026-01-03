@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { getSchemaItemPriority, matchesTypeHint } from "./schema-helpers";
+
 export type SkinSchemaRarity = {
   id: string;
   name: string;
@@ -63,21 +65,16 @@ export class SkinSchemaService {
   private itemsByOriginalName = new Map<string, SkinSchema[]>();
 
   async init(): Promise<void> {
-    const cwdPath = path.join(process.cwd(), "src/data/items/items.json");
-    const rootPath = path.join(
-      process.cwd(),
-      "apps/api/src/data/items/items.json"
+    const filePath = path.join(
+      __dirname,
+      "..",
+      "..",
+      "data",
+      "items",
+      "items.json"
     );
-    const filePath = fs.existsSync(cwdPath) ? cwdPath : rootPath;
     const raw = fs.readFileSync(filePath, "utf-8");
     const items = JSON.parse(raw) as Record<string, SkinSchema>;
-
-    const defIndexCollisions: Array<{
-      def_index: string;
-      existing: { id: string; name: string; priority: number };
-      incoming: { id: string; name: string; priority: number };
-      action: "kept_existing" | "replaced_existing";
-    }> = [];
 
     Object.values(items).forEach((item) => {
       this.itemsByName.set(item.name, item);
@@ -94,27 +91,13 @@ export class SkinSchemaService {
         if (!existing) {
           this.itemsByDefIndex.set(normalizedDefIndex, item);
         } else if (existing.id !== item.id) {
-          const existingPriority = getDefIndexPriority(existing);
-          const incomingPriority = getDefIndexPriority(item);
+          const existingPriority = getSchemaItemPriority(existing);
+          const incomingPriority = getSchemaItemPriority(item);
           let action: "kept_existing" | "replaced_existing" = "kept_existing";
           if (incomingPriority > existingPriority) {
             this.itemsByDefIndex.set(normalizedDefIndex, item);
             action = "replaced_existing";
           }
-          defIndexCollisions.push({
-            def_index: normalizedDefIndex,
-            existing: {
-              id: existing.id,
-              name: existing.name,
-              priority: existingPriority
-            },
-            incoming: {
-              id: item.id,
-              name: item.name,
-              priority: incomingPriority
-            },
-            action
-          });
         }
       }
       const normalizedPaintIndex = normalizeIndex(item.paint_index);
@@ -140,13 +123,6 @@ export class SkinSchemaService {
       }
     });
 
-    if (defIndexCollisions.length > 0) {
-      console.log("ByMykel def_index collisions", {
-        count: defIndexCollisions.length,
-        sample: defIndexCollisions.slice(0, 200),
-        truncated: defIndexCollisions.length > 200
-      });
-    }
   }
 
   getByName(name: string): SkinSchema | null {
@@ -338,58 +314,6 @@ function normalizeIndex(value: string | number | null | undefined): string | nul
 function normalizeTypeHint(typeHint: string): string | null {
   const normalized = typeHint.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
-}
-
-function matchesTypeHint(item: SkinSchema, typeHint: string): boolean {
-  if (typeHint.includes("graffiti") || typeHint.includes("spray")) {
-    return item.id.startsWith("graffiti-");
-  }
-  if (typeHint.includes("music kit") || typeHint.includes("musickit")) {
-    return item.id.startsWith("music_kit-");
-  }
-  if (typeHint.includes("sticker")) {
-    return item.id.startsWith("sticker-") || item.id.startsWith("sticker_slab-");
-  }
-  if (
-    typeHint.includes("case") ||
-    typeHint.includes("container") ||
-    typeHint.includes("capsule") ||
-    typeHint.includes("package") ||
-    typeHint.includes("crate")
-  ) {
-    return item.id.startsWith("crate-");
-  }
-  return false;
-}
-
-function getDefIndexPriority(item: SkinSchema): number {
-  const id = item.id.toLowerCase();
-  if (id.startsWith("music_kit-") || id.startsWith("music-kit-")) {
-    return 50;
-  }
-  if (
-    id.startsWith("weapon-") ||
-    id.startsWith("skin-") ||
-    id.startsWith("agent-") ||
-    id.startsWith("glove-") ||
-    id.startsWith("gloves-") ||
-    id.startsWith("crate-") ||
-    id.startsWith("case-") ||
-    id.startsWith("tool-") ||
-    id.startsWith("collectible-") ||
-    id.startsWith("pin-") ||
-    id.startsWith("patch-") ||
-    id.startsWith("keychain-")
-  ) {
-    return 40;
-  }
-  if (id.startsWith("sticker-") || id.startsWith("sticker_slab-")) {
-    return 10;
-  }
-  if (id.startsWith("graffiti-")) {
-    return 10;
-  }
-  return 20;
 }
 
 function hasDefIndexCategoryConflict(items: SkinSchema[]): boolean {

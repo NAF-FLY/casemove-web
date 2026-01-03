@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { steamManager } from "../../core/steam-manager";
+import { getInventory } from "./service";
 
 export async function registerInventoryRoutes(app: FastifyInstance) {
   app.get("/inventory", async (request, reply) => {
@@ -10,7 +11,7 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
 
     try {
       const client = steamManager.getClient();
-      const items = await client.getInventory();
+      const items = await getInventory(client);
 
       return { items };
     } catch (error) {
