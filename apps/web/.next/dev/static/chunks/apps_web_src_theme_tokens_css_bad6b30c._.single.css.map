@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 1, "column": 0}, "map": {"version":3,"sources":["turbopack:///[project]/apps/web/src/theme/tokens.css"],"sourcesContent":[":root[data-theme=\"dark\"] {\n  --bg: #0A0B12;\n  --panel: #14161F;\n  --panel-soft: #12141D;\n  --border: #323648;\n  --text: #EBEEF5;\n  --text-muted: #8C91AA;\n  --accent: #00E5D4;\n  --accent-soft: #00B4AA;\n  --danger: #FF5A78;\n}\n"],"names":[],"mappings":"AAAA"}}]
-}

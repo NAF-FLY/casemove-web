@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 46, "column": 0}, "map": {"version":3,"sources":["file:///home/mrazcore/Work/steam-inventory-mover/apps/web/src/app/api/auth/logout/route.ts"],"sourcesContent":["import { NextResponse } from \"next/server\";\n\nexport async function POST(request: Request) {\n  const baseUrl = process.env.API_URL ?? \"http://localhost:4000\";\n  const token = request.headers.get(\"authorization\");\n\n  const response = await fetch(`${baseUrl}/auth/logout`, {\n    method: \"POST\",\n    headers: token ? { Authorization: token } : undefined\n  });\n\n  if (!response.ok) {\n    return NextResponse.json(\n      { message: \"Logout failed\" },\n      { status: response.status }\n    );\n  }\n\n  return NextResponse.json({ ok: true });\n}\n"],"names":[],"mappings":";;;;AAAA;;AAEO,eAAe,KAAK,OAAgB;IACzC,MAAM,UAAU,QAAQ,GAAG,CAAC,OAAO,IAAI;IACvC,MAAM,QAAQ,QAAQ,OAAO,CAAC,GAAG,CAAC;IAElC,MAAM,WAAW,MAAM,MAAM,GAAG,QAAQ,YAAY,CAAC,EAAE;QACrD,QAAQ;QACR,SAAS,QAAQ;YAAE,eAAe;QAAM,IAAI;IAC9C;IAEA,IAAI,CAAC,SAAS,EAAE,EAAE;QAChB,OAAO,qPAAY,CAAC,IAAI,CACtB;YAAE,SAAS;QAAgB,GAC3B;YAAE,QAAQ,SAAS,MAAM;QAAC;IAE9B;IAEA,OAAO,qPAAY,CAAC,IAAI,CAAC;QAAE,IAAI;IAAK;AACtC"}}]
-}
