@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { useAuthStore } from "@/store/auth.store";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ export default function LoginCard({ onSuccess }: LoginCardProps) {
   const loading = useAuthStore((state) => state.loading);
   const error = useAuthStore((state) => state.error);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [form, setForm] = useState({
     username: "",
     password: "",
@@ -40,10 +41,14 @@ export default function LoginCard({ onSuccess }: LoginCardProps) {
         password: form.password,
         twoFactorCode: form.twoFactorCode || undefined
       });
-      const { token, error: loginError } = useAuthStore.getState();
-      if (token && !loginError) {
+      const { isAuthenticated, error: loginError } =
+        useAuthStore.getState();
+      if (isAuthenticated && !loginError) {
+        const nextPath = searchParams.get("next");
+        const redirectTo =
+          nextPath && nextPath.startsWith("/") ? nextPath : "/inventory";
         onSuccess?.();
-        router.push("/inventory");
+        router.push(redirectTo);
       }
     } catch {
       // errors are handled in the store

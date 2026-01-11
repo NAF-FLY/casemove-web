@@ -1,12 +1,18 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+
+const cookieName = "casemove_token";
 
 export async function POST(request: Request) {
   const baseUrl = process.env.API_URL ?? "http://localhost:4000";
-  const token = request.headers.get("authorization");
+  const isProduction = process.env.NODE_ENV === "production";
+  const token = cookies().get(cookieName)?.value;
+  const authHeader =
+    request.headers.get("authorization") ?? (token ? `Bearer ${token}` : null);
 
   const response = await fetch(`${baseUrl}/auth/logout`, {
     method: "POST",
-    headers: token ? { Authorization: token } : undefined
+    headers: authHeader ? { Authorization: authHeader } : undefined
   });
 
   if (!response.ok) {
@@ -16,5 +22,16 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true });
+  const nextResponse = NextResponse.json({ ok: true });
+  nextResponse.cookies.set({
+    name: cookieName,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: isProduction,
+    path: "/",
+    maxAge: 0
+  });
+
+  return nextResponse;
 }

@@ -1,6 +1,10 @@
 import { create } from "zustand";
 
-import { login as loginRequest, logout as logoutRequest } from "@/lib/api-client/auth";
+import {
+  fetchSession,
+  login as loginRequest,
+  logout as logoutRequest
+} from "@/lib/api-client/auth";
 
 type SteamStatus = "idle" | "connected" | "pending" | "error";
 
@@ -11,85 +15,93 @@ type LoginPayload = {
 };
 
 type AuthState = {
-  token: string | null;
+  isAuthenticated: boolean;
   isInitialized: boolean;
   personaName: string | null;
   steamStatus: SteamStatus;
   loading: boolean;
   error: string | null;
-  setToken: (token: string) => void;
   setPersonaName: (name: string | null) => void;
   setSteamStatus: (status: SteamStatus) => void;
   setError: (message: string | null) => void;
-  initFromStorage: () => void;
+  initFromSession: () => Promise<void>;
   logout: () => Promise<void>;
   login: (payload: LoginPayload) => Promise<void>;
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
-  token: null,
+  isAuthenticated: false,
   isInitialized: false,
   personaName: null,
   steamStatus: "idle",
   loading: false,
   error: null,
-  setToken: (token) => {
-    set({ token });
-    localStorage.setItem("casemove_token", token);
-  },
   setPersonaName: (name) => {
     set({ personaName: name });
-    if (name) {
-      localStorage.setItem("casemove_persona", name);
-    } else {
-      localStorage.removeItem("casemove_persona");
-    }
   },
   setSteamStatus: (status) => set({ steamStatus: status }),
   setError: (message) => set({ error: message }),
-  initFromStorage: () => {
+  initFromSession: async () => {
     set({ isInitialized: false });
-    const token = localStorage.getItem("casemove_token");
-    const personaName = localStorage.getItem("casemove_persona");
-    if (token) {
-      set({ token });
+    try {
+      const session = await fetchSession();
+
+      if (session.authenticated) {
+        set({
+          isAuthenticated: true,
+          personaName: session.personaName,
+          steamStatus: "connected",
+          error: null
+        });
+      } else {
+        set({
+          isAuthenticated: false,
+          personaName: null,
+          steamStatus: "idle",
+          error: null
+        });
+      }
+    } catch (error) {
+      set({
+        isAuthenticated: false,
+        personaName: null,
+        steamStatus: "error",
+        error: error instanceof Error ? error.message : "Failed to load session"
+      });
+    } finally {
+      set({ isInitialized: true });
     }
-    if (personaName) {
-      set({ personaName });
-    }
-    set({ isInitialized: true });
   },
   logout: async () => {
     try {
       await logoutRequest();
     } finally {
-      set({ token: null, steamStatus: "idle", error: null, personaName: null });
-      localStorage.removeItem("casemove_token");
-      localStorage.removeItem("casemove_persona");
+      set({
+        isAuthenticated: false,
+        steamStatus: "idle",
+        error: null,
+        personaName: null
+      });
     }
   },
   login: async (payload) => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, steamStatus: "pending" });
 
     try {
       const result = await loginRequest(payload);
+      const status = result.steamStatus === "connected" ? "connected" : "idle";
       set({
-        token: result.token,
-        steamStatus: "connected",
+        isAuthenticated: true,
+        steamStatus: status,
         personaName: result.personaName ?? null,
         loading: false
       });
-      localStorage.setItem("casemove_token", result.token);
-      if (result.personaName) {
-        localStorage.setItem("casemove_persona", result.personaName);
-      } else {
-        localStorage.removeItem("casemove_persona");
-      }
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : "Login failed",
         steamStatus: "error",
-        loading: false
+        loading: false,
+        isAuthenticated: false
       });
     }
   }

@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 
-import RequireAuth from "@/components/auth/RequireAuth";
 import FiltersBar from "@/components/inventory/FiltersBar";
 import InventoryTable from "@/components/inventory/InventoryTable";
 import AppHeader from "@/components/layout/AppHeader";
@@ -21,33 +20,31 @@ export default function InventoryPage() {
   }, [loadInventory]);
 
   return (
-    <RequireAuth>
-      <PageContainer className="px-0">
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <div className="flex-1">
-            <AppHeader />
-            <div className="px-8">
-              <FiltersBar />
-              {error ? (
-                <p className="mt-4 text-sm text-[var(--danger)]">{error}</p>
-              ) : null}
-              {loading ? (
-                <p className="mt-4 text-sm text-[var(--text-muted)]">
-                  Loading inventory...
-                </p>
-              ) : (
-                <InventoryTable items={items} error={error} loading={loading} />
-              )}
-            </div>
-            <FloatingActionButton
-              label="Move selected →"
-              onClick={() => {}}
-              visible={selectedCount > 0}
-            />
+    <PageContainer className="px-0">
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <div className="flex-1">
+          <AppHeader />
+          <div className="px-8">
+            <FiltersBar />
+            {error ? (
+              <p className="mt-4 text-sm text-[var(--danger)]">{error}</p>
+            ) : null}
+            {loading ? (
+              <p className="mt-4 text-sm text-[var(--text-muted)]">
+                Loading inventory...
+              </p>
+            ) : (
+              <InventoryTable items={items} error={error} loading={loading} />
+            )}
           </div>
+          <FloatingActionButton
+            label="Move selected →"
+            onClick={() => {}}
+            visible={selectedCount > 0}
+          />
         </div>
-      </PageContainer>
-    </RequireAuth>
+      </div>
+    </PageContainer>
   );
 }

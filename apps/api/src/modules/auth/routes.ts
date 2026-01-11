@@ -57,4 +57,20 @@ export function registerAuthRoutes(app: FastifyInstance) {
     steamManager.logout();
     return { ok: true };
   });
+
+  app.get("/auth/session", async (request, reply) => {
+    if (!request.user) {
+      return reply.code(401).send({ authenticated: false });
+    }
+
+    try {
+      const client = steamManager.getClient();
+      return {
+        authenticated: true,
+        personaName: client.getPersonaName()
+      };
+    } catch {
+      return reply.code(401).send({ authenticated: false });
+    }
+  });
 }

@@ -1,11 +1,7 @@
 import type { InventoryItemDTO } from "@casemove/shared-types";
 
-export async function fetchInventory(token: string): Promise<InventoryItemDTO[]> {
-  const res = await fetch("/api/inventory", {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  });
+export async function fetchInventory(): Promise<InventoryItemDTO[]> {
+  const res = await fetch("/api/inventory");
 
   if (!res.ok) {
     throw new Error("Failed to load inventory");

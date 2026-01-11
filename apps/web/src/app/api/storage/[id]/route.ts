@@ -1,4 +1,7 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+
+const cookieName = "casemove_token";
 
 type Params = {
   params: Promise<{
@@ -9,7 +12,9 @@ type Params = {
 export async function GET(request: Request, { params }: Params) {
   const { id } = await params;
   const baseUrl = process.env.API_URL ?? "http://localhost:4000";
-  const authHeader = request.headers.get("authorization");
+  const token = cookies().get(cookieName)?.value;
+  const authHeader =
+    request.headers.get("authorization") ?? (token ? `Bearer ${token}` : null);
   const response = await fetch(`${baseUrl}/storage/${id}`, {
     cache: "no-store",
     headers: authHeader ? { Authorization: authHeader } : undefined

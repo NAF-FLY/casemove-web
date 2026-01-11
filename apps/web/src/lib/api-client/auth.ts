@@ -5,8 +5,12 @@ type LoginPayload = {
 };
 
 type LoginResponse = {
-  token: string;
   steamStatus: string;
+  personaName: string | null;
+};
+
+type SessionResponse = {
+  authenticated: boolean;
   personaName: string | null;
 };
 
@@ -38,9 +42,21 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
 }
 
 export async function logout(): Promise<void> {
-  const token = localStorage.getItem("casemove_token");
   await fetch("/api/auth/logout", {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined
+    method: "POST"
   });
+}
+
+export async function fetchSession(): Promise<SessionResponse> {
+  const response = await fetch("/api/auth/session", { cache: "no-store" });
+
+  if (!response.ok) {
+    return { authenticated: false, personaName: null };
+  }
+
+  const data = await response.json().catch(() => ({}));
+  return {
+    authenticated: Boolean(data?.authenticated),
+    personaName: data?.personaName ?? null
+  };
 }

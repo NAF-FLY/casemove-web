@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 
 const timeoutMs = 25000;
+const cookieName = "casemove_token";
+const cookieMaxAgeSeconds = 60 * 60 * 24 * 7;
 
 export async function POST(request: Request) {
   try {
     const baseUrl = process.env.API_URL ?? "http://localhost:4000";
+    const isProduction = process.env.NODE_ENV === "production";
     const payload = await request.json();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -42,7 +45,23 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json(data);
+    const responseBody = data && typeof data === "object" ? data : {};
+    const { token, ...safeBody } = responseBody as { token?: string };
+    const nextResponse = NextResponse.json(safeBody);
+
+    if (token) {
+      nextResponse.cookies.set({
+        name: cookieName,
+        value: token,
+        httpOnly: true,
+        sameSite: "lax",
+        secure: isProduction,
+        path: "/",
+        maxAge: cookieMaxAgeSeconds
+      });
+    }
+
+    return nextResponse;
   } catch {
     return NextResponse.json({ message: "Login failed" }, { status: 500 });
   }
