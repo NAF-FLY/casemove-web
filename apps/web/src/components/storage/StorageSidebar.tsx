@@ -22,16 +22,16 @@ export default function StorageSidebar({
           <button
             key={storage.id}
             className={cn(
-              "flex flex-col gap-1 rounded-2xl border border-[rgba(229,231,235,0.2)] bg-[#1B2248] px-4 py-3 text-left transition-colors",
+              "flex flex-col gap-1 rounded-2xl border border-border/40 bg-card px-4 py-3 text-left transition-colors",
               isActive
-                ? "border-[var(--accent)] text-[var(--text)]"
-                : "text-[#A1ADD6] hover:border-[rgba(229,231,235,0.35)]"
+                ? "border-primary text-foreground"
+                : "text-muted-foreground hover:border-border/70"
             )}
             onClick={() => onSelect(storage.id)}
             type="button"
           >
             <span className="text-sm font-semibold">{storage.name}</span>
-            <span className="text-xs text-[#8E9AC4]">
+            <span className="text-xs text-muted-foreground/80">
               {storage.used} / {storage.capacity}
             </span>
           </button>

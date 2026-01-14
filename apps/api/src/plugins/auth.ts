@@ -1,6 +1,6 @@
 import fp from "fastify-plugin";
 
-import { verifyToken } from "../core/jwt";
+import { supabaseAdmin } from "../core/supabase";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -24,8 +24,12 @@ const authPlugin = fp(async (app) => {
       return;
     }
 
-    const payload = verifyToken(token);
-    request.user = { userId: payload.userId };
+    try {
+      const { data, error } = await supabaseAdmin.auth.getUser(token);
+      request.user = !error && data.user ? { userId: data.user.id } : null;
+    } catch {
+      request.user = null;
+    }
   });
 });
 

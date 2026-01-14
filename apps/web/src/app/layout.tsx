@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import AuthInit from "./AuthInit";
+import Providers from "./Providers";
 import "./globals.css";
 
 export const metadata = {
@@ -10,9 +11,11 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html data-theme="dark" lang="en" suppressHydrationWarning>
-      <body>
-        <AuthInit />
-        {children}
+      <body className="font-sans">
+        <Providers>
+          <AuthInit />
+          {children}
+        </Providers>
       </body>
     </html>
   );

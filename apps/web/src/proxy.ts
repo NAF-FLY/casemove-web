@@ -5,7 +5,7 @@ const cookieName = "casemove_token";
 const loginPath = "/auth/login";
 const inventoryPath = "/inventory";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(cookieName)?.value;
 
@@ -31,5 +31,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/inventory/:path*", "/storage/:path*", "/auth/login"]
+  matcher: ["/profile", "/inventory/:path*", "/storage/:path*", "/auth/login"]
 };

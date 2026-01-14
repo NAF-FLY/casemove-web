@@ -2,30 +2,28 @@
 
 import type { InventoryItemDTO } from "@casemove/shared-types";
 
-import InventoryRow from "@/components/inventory/InventoryRow";
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow
-} from "@/components/ui/table";
 import TableContainer from "@/components/ui/TableContainer";
-import { tableHeaderCellClass } from "@/components/ui/tableStyles";
-import { cn } from "@/lib/utils";
 import { useInventorySelection } from "@/store/inventorySelection.store";
 import { useInventoryStore } from "@/store/inventory.store";
+
+import InventoryGridView from "@/components/inventory/InventoryGridView";
+import InventoryListView from "@/components/inventory/InventoryListView";
+import { buildInventoryDisplayItems } from "@/components/inventory/inventoryDisplay";
 
 type InventoryTableProps = {
   items?: InventoryItemDTO[];
   loading?: boolean;
   error?: string | null;
+  viewMode?: "grid" | "list";
+  emptyMessage?: string;
 };
 
 export default function InventoryTable({
   items,
   loading,
-  error
+  error,
+  viewMode = "grid",
+  emptyMessage = "Inventory is empty or failed to load items."
 }: InventoryTableProps) {
   const selected = useInventorySelection((state) => state.selected);
   const toggle = useInventorySelection((state) => state.toggle);
@@ -35,12 +33,15 @@ export default function InventoryTable({
   const tableItems = items ?? storeItems;
   const isLoading = loading ?? storeLoading;
   const hasError = error ?? storeError;
+  const isListView = viewMode === "list";
+
+  const displayItems = buildInventoryDisplayItems(tableItems, selected);
 
   if (!isLoading && !hasError && tableItems.length === 0) {
     return (
       <TableContainer className="mt-6">
         <div className="px-6 py-6 text-sm text-muted-foreground">
-          Inventory is empty or failed to load items.
+          {emptyMessage}
         </div>
       </TableContainer>
     );
@@ -48,52 +49,11 @@ export default function InventoryTable({
 
   return (
     <TableContainer className="mt-6">
-      <Table className="w-full border-separate border-spacing-y-3">
-        <TableHeader>
-          <TableRow className="border-0">
-            <TableHead className={cn(tableHeaderCellClass, "w-[32px] pl-4")} />
-            <TableHead className={cn(tableHeaderCellClass, "w-[40px] px-2")} />
-            <TableHead className={cn(tableHeaderCellClass, "px-3")}>
-              Item
-            </TableHead>
-            <TableHead className={cn(tableHeaderCellClass, "px-3")}>
-              Rarity
-            </TableHead>
-            <TableHead className={cn(tableHeaderCellClass, "px-3")}>
-              Price
-            </TableHead>
-            <TableHead className={cn(tableHeaderCellClass, "pr-4")}>
-              Location
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {tableItems.map((item) => {
-            const displayName = item.schema?.name ?? item.marketHashName;
-            const displayRarity = item.schema?.rarity ?? "Unknown";
-            const priceLabel = "—";
-            const iconUrl = item.schema?.image ?? item.iconUrl;
-            const rarityDot = item.schema?.rarity ?? null;
-
-            return (
-              <InventoryRow
-                key={item.id}
-                item={{
-                  id: item.id,
-                  name: displayName,
-                  rarity: displayRarity,
-                  price: priceLabel,
-                  location: "Inventory",
-                  iconUrl,
-                  rarityDot
-                }}
-                onToggle={toggle}
-                selected={selected.has(item.id)}
-              />
-            );
-          })}
-        </TableBody>
-      </Table>
+      {isListView ? (
+        <InventoryListView items={displayItems} onToggle={toggle} />
+      ) : (
+        <InventoryGridView items={displayItems} onToggle={toggle} />
+      )}
     </TableContainer>
   );
 }

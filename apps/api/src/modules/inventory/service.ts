@@ -1,5 +1,3 @@
-import util from "node:util";
-
 import type {
   InventoryItemDTO,
   InventoryItemSchemaDTO
@@ -28,10 +26,7 @@ export async function getInventory(
 function resolveSteamInventory(
   rawItems: SteamInventoryItem[]
 ): SteamInventoryItem[] {
-  console.log(
-    "Steam raw inventory items (unmapped)",
-    util.inspect(rawItems, { depth: null, maxArrayLength: 50, breakLength: 120 })
-  );
+  // Detailed raw item logging removed to keep console readable.
   const hiddenItems: Array<{
     id: string;
     def_index: string | number | null;
@@ -56,16 +51,7 @@ function resolveSteamInventory(
     visibleItems.push(item);
   }
   console.log(
-    "Steam GC hidden items filtered",
-    util.inspect(
-      {
-        rawCount: rawItems.length,
-        hiddenCount: hiddenItems.length,
-        hiddenItems,
-        visibleCount: visibleItems.length
-      },
-      { depth: null, maxArrayLength: 200, breakLength: 120 }
-    )
+    `Steam inventory counts: raw=${rawItems.length} hidden=${hiddenItems.length} visible=${visibleItems.length}`
   );
 
   const dedupedItems: SteamInventoryItem[] = [];
@@ -78,12 +64,20 @@ function resolveSteamInventory(
     seenIds.add(id);
     dedupedItems.push(item);
   }
+  console.log(
+    `Steam inventory counts: deduped=${dedupedItems.length}`
+  );
 
   const slotGroups = new Map<string, SteamInventoryItem[]>();
+  const itemsWithoutSlots: SteamInventoryItem[] = [];
   for (const item of dedupedItems) {
-    const key = `${String(item.inventory ?? "null")}:${String(
-      item.position ?? "null"
-    )}`;
+    const inventory = item.inventory ?? null;
+    const position = item.position ?? null;
+    if (inventory === null || position === null) {
+      itemsWithoutSlots.push(item);
+      continue;
+    }
+    const key = `${String(inventory)}:${String(position)}`;
     const items = slotGroups.get(key) ?? [];
     items.push(item);
     slotGroups.set(key, items);
@@ -99,7 +93,7 @@ function resolveSteamInventory(
     }>;
     chosen: { id: string; def_index: string | number | null; score: number; reason: string };
   }> = [];
-  const resolvedItems: SteamInventoryItem[] = [];
+  const resolvedItems: SteamInventoryItem[] = [...itemsWithoutSlots];
 
   for (const [slot, items] of slotGroups.entries()) {
     if (items.length === 1) {
@@ -140,16 +134,19 @@ function resolveSteamInventory(
   }
 
   console.log(
-    "Steam GC slot collisions resolved",
-    util.inspect(
-      {
-        collisionCount: collisionDetails.length,
-        slots: collisionDetails.map((detail) => detail.slot),
-        collisions: collisionDetails
-      },
-      { depth: null, maxArrayLength: 200, breakLength: 120 }
-    )
+    `Steam inventory collisions: slots=${collisionDetails.length}`
   );
+  console.log(
+    `Steam inventory counts: resolved=${resolvedItems.length}`
+  );
+
+  const minExpected = Math.floor(dedupedItems.length * 0.9);
+  if (resolvedItems.length < minExpected) {
+    console.warn(
+      `Steam inventory collision collapse detected, returning deduped items instead: deduped=${dedupedItems.length} resolved=${resolvedItems.length}`
+    );
+    return dedupedItems;
+  }
 
   return resolvedItems;
 }
@@ -302,6 +299,61 @@ function getAttributeValue(
   return null;
 }
 
+function getAttributeFloatValue(
+  rawItem: SteamInventoryItem,
+  defIndex: number,
+  preferBytes = true
+): number | null {
+  const attributes = rawItem.attribute ?? [];
+  const attribute = attributes.find((entry) => entry.def_index === defIndex);
+  if (!attribute) {
+    return null;
+  }
+  const valueFromNumber =
+    typeof attribute.value === "number" && Number.isFinite(attribute.value)
+      ? attribute.value
+      : null;
+  const valueFromBytes =
+    attribute.value_bytes && attribute.value_bytes.length >= 4
+      ? attribute.value_bytes.readFloatLE(0)
+      : null;
+  const valueFromString =
+    typeof attribute.value_string === "string"
+      ? (() => {
+          const parsed = Number(attribute.value_string);
+          return Number.isFinite(parsed) ? parsed : null;
+        })()
+      : null;
+
+  const ordered = preferBytes
+    ? [valueFromBytes, valueFromNumber, valueFromString]
+    : [valueFromNumber, valueFromBytes, valueFromString];
+  for (const value of ordered) {
+    if (value !== null && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function getPaintWear(rawItem: SteamInventoryItem): number | null {
+  const wear =
+    typeof rawItem.paint_wear === "number" && Number.isFinite(rawItem.paint_wear)
+      ? rawItem.paint_wear
+      : null;
+  if (wear !== null) {
+    return wear;
+  }
+  const wearFromAttributes = getAttributeFloatValue(rawItem, 8, true);
+  if (wearFromAttributes === null) {
+    return null;
+  }
+  if (wearFromAttributes < 0 || wearFromAttributes > 1) {
+    return null;
+  }
+  return wearFromAttributes;
+}
+
 function getStickerKitId(rawItem: SteamInventoryItem): number | null {
   const stickerId = rawItem.stickers?.[0]?.sticker_id;
   if (typeof stickerId === "number" && Number.isFinite(stickerId)) {
@@ -328,7 +380,7 @@ function shouldResolveGraffitiFromStickerBranch(
   if (defIndex !== 1348 && defIndex !== 1349) {
     return false;
   }
-  if (typeof rawItem.paint_wear === "number" && Number.isFinite(rawItem.paint_wear)) {
+  if (getPaintWear(rawItem) !== null) {
     return false;
   }
   return true;
@@ -368,9 +420,9 @@ function mapSteamItemToDTO(
 ): InventoryItemDTO {
   const defIndex = rawItem.def_index;
   const paintIndex = rawItem.paint_index;
-  const wearName = getWearName(rawItem.paint_wear);
-  const hasPaintWear =
-    typeof rawItem.paint_wear === "number" && Number.isFinite(rawItem.paint_wear);
+  const paintWear = getPaintWear(rawItem);
+  const wearName = getWearName(paintWear);
+  const hasPaintWear = paintWear !== null && Number.isFinite(paintWear);
   const schemaItem = schemaLookup.getItemSchemaItem(defIndex);
   const schemaName = schemaLookup.getItemSchemaName(defIndex);
   const rawName = rawItem.market_hash_name ?? rawItem.name ?? null;
@@ -455,34 +507,7 @@ function mapSteamItemToDTO(
       }
     : null;
 
-  if (
-    marketHashName.includes("Sticker |") ||
-    defIndexItem?.id.startsWith("music-kit-") ||
-    defIndexItem?.id.startsWith("music_kit-")
-  ) {
-    const attr113 = getAttributeValue(rawItem, 113, true);
-    console.log(
-      "Steam GC mapping debug",
-      util.inspect(
-        {
-          itemId: String(rawItem.id ?? rawItem.assetid ?? ""),
-          def_index: defIndex ?? null,
-          baseFromDefIndex: defIndexItem
-            ? { id: defIndexItem.id, name: defIndexItem.name }
-            : null,
-          stickerBranchTriggered,
-          sticker_id: rawItem.stickers?.[0]?.sticker_id ?? null,
-          attr113,
-          graffitiTintId,
-          graffitiKitId,
-          musicKitId,
-          musicKitItem: musicKitItem ? { id: musicKitItem.id, name: musicKitItem.name } : null,
-          finalName: marketHashName
-        },
-        { depth: null, maxArrayLength: 50, breakLength: 120 }
-      )
-    );
-  }
+  // Mapping debug log removed to reduce console noise.
 
   return {
     id: String(rawItem.id ?? rawItem.assetid ?? ""),
@@ -491,6 +516,7 @@ function mapSteamItemToDTO(
     iconUrl: rawItem.icon_url ?? rawItem.icon ?? null,
     moveable: Boolean(rawItem.item_moveable ?? rawItem.marketable ?? true),
     tradable: Boolean(rawItem.tradable ?? true),
+    paintWear: hasPaintWear ? paintWear : null,
     schema: schemaDto
   };
 }
@@ -517,7 +543,7 @@ function getSlotCollisionScore(rawItem: SteamInventoryItem): {
   ) {
     return { score: 4, reason: "graffiti_container_with_tint" };
   }
-  if (typeof rawItem.paint_wear === "number" && Number.isFinite(rawItem.paint_wear)) {
+  if (getPaintWear(rawItem) !== null) {
     return { score: 3, reason: "weapon_skin_paint_wear" };
   }
   if ((defIndex === 1348 || defIndex === 1349) && stickerKitId !== null) {

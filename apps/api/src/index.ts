@@ -4,7 +4,7 @@ import { registerConfig } from "./plugins/config";
 import { authPlugin } from "./plugins/auth";
 import { registerInventoryRoutes } from "./modules/inventory/routes";
 import { registerStorageRoutes } from "./modules/storage/routes";
-import { registerAuthRoutes } from "./modules/auth/routes";
+import { registerSteamAccountsRoutes } from "./modules/steam-accounts/routes";
 import { skinSchemaService } from "./modules/schema/skin-schema.service";
 
 const app = Fastify();
@@ -22,9 +22,9 @@ async function startServer() {
   }
 
   await app.register(authPlugin);
-  registerAuthRoutes(app);
   await registerInventoryRoutes(app);
   await registerStorageRoutes(app);
+  await registerSteamAccountsRoutes(app);
 
   app.listen({ port: config.port }).then((address) => {
     console.log(`Server listening at ${address}`);

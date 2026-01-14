@@ -10,7 +10,7 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
     }
 
     try {
-      const client = steamManager.getClient();
+      const client = steamManager.getActiveClient(request.user.userId);
       const items = await getInventory(client);
 
       return { items };

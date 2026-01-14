@@ -12,7 +12,8 @@ type Params = {
 export async function GET(request: Request, { params }: Params) {
   const { id } = await params;
   const baseUrl = process.env.API_URL ?? "http://localhost:4000";
-  const token = cookies().get(cookieName)?.value;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(cookieName)?.value;
   const authHeader =
     request.headers.get("authorization") ?? (token ? `Bearer ${token}` : null);
   const response = await fetch(`${baseUrl}/storage/${id}`, {

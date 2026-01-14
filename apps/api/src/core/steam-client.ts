@@ -98,13 +98,19 @@ export class SteamClient implements ISteamClient {
 
     if (typeof client.getUserInventoryContents === "function") {
       rawItems = await new Promise<SteamInventoryItem[]>((resolve, reject) => {
-        client.getUserInventoryContents?.(steamIdValue, 730, 2, true, (err, items) => {
+        client.getUserInventoryContents?.(
+          steamIdValue,
+          730,
+          2,
+          false,
+          (err, items) => {
           if (err) {
             reject(err);
             return;
           }
           resolve(items ?? []);
-        });
+        }
+        );
       });
     } else {
       rawItems = await this.waitForGcInventory();

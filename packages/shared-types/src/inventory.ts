@@ -14,5 +14,6 @@ export type InventoryItemDTO = {
   iconUrl: string | null;
   moveable: boolean;
   tradable: boolean;
+  paintWear?: number | null;
   schema?: InventoryItemSchemaDTO | null;
 };

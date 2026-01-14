@@ -1,5 +1,4 @@
-import { Checkbox } from "@/components/ui/checkbox";
-import { TableCell, TableRow } from "@/components/ui/table";
+import { Checkbox, TableCell, TableRow } from "@heroui/react";
 import {
   tableCellBaseClass,
   tableCellLeftBorderClass,
@@ -26,14 +25,14 @@ type InventoryRowProps = {
 
 function getRarityClass(rarity: string) {
   if (rarity === "Covert") {
-    return "text-[var(--danger)]";
+    return "text-destructive";
   }
 
   if (rarity === "Classified") {
-    return "text-[var(--accent)]";
+    return "text-primary";
   }
 
-  return "text-[var(--text-muted)]";
+  return "text-muted-foreground";
 }
 
 function getRarityDotClass(rarity: string | null | undefined) {
@@ -53,7 +52,7 @@ function getRarityDotClass(rarity: string | null | undefined) {
     case "Contraband":
       return "bg-amber-500";
     default:
-      return "bg-[var(--text-muted)]";
+      return "bg-muted-foreground";
   }
 }
 
@@ -63,7 +62,10 @@ export default function InventoryRow({
   onToggle
 }: InventoryRowProps) {
   return (
-    <TableRow className={tableRowClass}>
+    <TableRow
+      className={tableRowClass}
+      data-state={selected ? "selected" : undefined}
+    >
       <TableCell
         className={cn(
           tableCellBaseClass,
@@ -72,13 +74,13 @@ export default function InventoryRow({
         )}
       >
         <Checkbox
-          checked={selected}
-          className="border-[var(--border)] data-[state=checked]:bg-[var(--accent)] data-[state=checked]:text-black"
-          onCheckedChange={() => onToggle(item.id)}
+          isSelected={selected}
+          radius="sm"
+          onValueChange={() => onToggle(item.id)}
         />
       </TableCell>
       <TableCell className={cn(tableCellBaseClass, "w-[40px] px-2")}>
-        <div className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--panel-soft)]">
+        <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-secondary">
           {item.iconUrl ? (
             <img
               alt={item.name}
@@ -111,7 +113,7 @@ export default function InventoryRow({
         className={cn(
           tableCellBaseClass,
           tableCellRightBorderClass,
-          "rounded-r-xl px-4 text-[#A1ADD6]"
+          "rounded-r-xl px-4 text-muted-foreground"
         )}
       >
         {item.location}

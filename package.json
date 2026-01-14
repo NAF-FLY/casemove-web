@@ -9,6 +9,8 @@
     "dev": "concurrently \"pnpm dev:api\" \"pnpm dev:web\""
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3",
+    "typescript-language-server": "^5.1.3"
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import AppHeader from "@/components/layout/AppHeader";
 import PageContainer from "@/components/layout/PageContainer";
@@ -9,6 +9,7 @@ import StorageSidebar from "@/components/storage/StorageSidebar";
 import StorageItemsTable from "@/components/storage/StorageItemsTable";
 import { Button } from "@/components/ui/button";
 import TableContainer from "@/components/ui/TableContainer";
+import { cn } from "@/lib/utils";
 import { useStorageStore } from "@/store/storage.store";
 
 export default function StoragePage() {
@@ -19,6 +20,7 @@ export default function StoragePage() {
   const loadStorages = useStorageStore((state) => state.loadStorages);
   const loadStorageItems = useStorageStore((state) => state.loadStorageItems);
   const setActiveStorage = useStorageStore((state) => state.setActiveStorage);
+  const [collapsed, setCollapsed] = useState(false);
 
   const activeItems = activeStorageId
     ? itemsByStorageId[activeStorageId]
@@ -35,9 +37,17 @@ export default function StoragePage() {
 
   return (
     <PageContainer className="px-0">
-      <div className="flex min-h-screen">
-        <Sidebar />
-        <div className="flex-1">
+      <div className="relative min-h-screen">
+        <Sidebar
+          collapsed={collapsed}
+          onToggle={() => setCollapsed((prev) => !prev)}
+        />
+        <div
+          className={cn(
+            "min-h-screen transition-[margin-left] duration-300 ease-in-out",
+            collapsed ? "ml-28" : "ml-72"
+          )}
+        >
           <AppHeader />
           <div className="px-8">
             <div className="mt-6 flex justify-end">
@@ -59,11 +69,11 @@ export default function StoragePage() {
               />
               <div>
                 {storages.length === 0 ? (
-                  <TableContainer className="border border-[rgba(229,231,235,0.2)] bg-[#1B2248] px-4 py-6 text-sm text-[#A1ADD6]">
+                  <TableContainer className="border border-border/40 bg-card px-4 py-6 text-sm text-muted-foreground">
                     No storage units
                   </TableContainer>
                 ) : isItemsLoading ? (
-                  <TableContainer className="border border-[rgba(229,231,235,0.2)] bg-[#1B2248] px-4 py-6 text-sm text-[#A1ADD6]">
+                  <TableContainer className="border border-border/40 bg-card px-4 py-6 text-sm text-muted-foreground">
                     Loading...
                   </TableContainer>
                 ) : (

@@ -14,7 +14,7 @@ export default function PageContainer({
   return (
     <div
       className={cn(
-        "min-h-screen bg-[#181D3E] px-8",
+        "min-h-screen bg-background px-8 text-foreground",
         className
       )}
     >

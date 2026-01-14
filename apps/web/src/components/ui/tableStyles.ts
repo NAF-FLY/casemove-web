@@ -1,10 +1,10 @@
 export const tableHeaderCellClass =
-  "h-auto pb-2 pt-0 text-[11px] uppercase tracking-[0.2em] text-[#A1ADD6]";
+  "h-auto pb-2 pt-0 text-[11px] uppercase tracking-[0.2em] text-muted-foreground/80";
 export const tableRowClass =
-  "border-0 bg-[#1B2248] text-sm text-[var(--text)] transition-colors hover:bg-[#232C58]";
+  "group border-0 text-sm text-foreground transition-colors";
 export const tableCellBaseClass =
-  "border-y border-[rgba(229,231,235,0.2)] py-4";
+  "border-y border-border/40 bg-card py-4 group-hover:bg-muted group-data-[state=selected]:bg-muted";
 export const tableCellLeftBorderClass =
-  "border-l border-[rgba(229,231,235,0.2)]";
+  "border-l border-border/40";
 export const tableCellRightBorderClass =
-  "border-r border-[rgba(229,231,235,0.2)]";
+  "border-r border-border/40";

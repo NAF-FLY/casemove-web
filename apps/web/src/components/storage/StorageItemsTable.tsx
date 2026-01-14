@@ -3,10 +3,11 @@ import type { InventoryItemDTO } from "@casemove/shared-types";
 import {
   Table,
   TableBody,
-  TableHead,
+  TableCell,
+  TableColumn,
   TableHeader,
   TableRow
-} from "@/components/ui/table";
+} from "@heroui/react";
 import TableContainer from "@/components/ui/TableContainer";
 import {
   tableCellBaseClass,
@@ -23,33 +24,43 @@ type StorageItemsTableProps = {
 
 function getRarityClass(rarity: string) {
   if (rarity === "Covert") {
-    return "text-[var(--danger)]";
+    return "text-destructive";
   }
 
   if (rarity === "Classified") {
-    return "text-[var(--accent)]";
+    return "text-primary";
   }
 
-  return "text-[var(--text-muted)]";
+  return "text-muted-foreground";
 }
 
 export default function StorageItemsTable({ items }: StorageItemsTableProps) {
   return (
     <TableContainer>
-      <Table className="w-full border-separate border-spacing-y-3">
+      <Table
+        aria-label="Storage items"
+        classNames={{
+          base: "gap-0",
+          wrapper: "overflow-auto bg-transparent p-0 shadow-none",
+          table: "w-full border-separate border-spacing-y-3",
+          thead: "after:content-none",
+          tbody: "after:content-none",
+          th: "bg-transparent"
+        }}
+      >
         <TableHeader>
-          <TableRow className="border-0">
-            <TableHead className={cn(tableHeaderCellClass, "w-[40px] pl-4")} />
-            <TableHead className={cn(tableHeaderCellClass, "px-3")}>
-              Item
-            </TableHead>
-            <TableHead className={cn(tableHeaderCellClass, "px-3")}>
-              Rarity
-            </TableHead>
-            <TableHead className={cn(tableHeaderCellClass, "pr-4")}>
-              Price
-            </TableHead>
-          </TableRow>
+          <TableColumn className={cn(tableHeaderCellClass, "w-[40px] pl-4")}>
+            <span className="sr-only">Icon</span>
+          </TableColumn>
+          <TableColumn className={cn(tableHeaderCellClass, "px-3")}>
+            Item
+          </TableColumn>
+          <TableColumn className={cn(tableHeaderCellClass, "px-3")}>
+            Rarity
+          </TableColumn>
+          <TableColumn className={cn(tableHeaderCellClass, "pr-4")}>
+            Price
+          </TableColumn>
         </TableHeader>
         <TableBody>
           {items.map((item) => {
@@ -59,19 +70,21 @@ export default function StorageItemsTable({ items }: StorageItemsTableProps) {
 
             return (
               <TableRow key={item.id} className={tableRowClass}>
-                <TableHead
+                <TableCell
                   className={cn(
                     tableCellBaseClass,
                     tableCellLeftBorderClass,
                     "w-[40px] rounded-l-xl pl-4"
                   )}
                 >
-                  <div className="h-9 w-9 rounded-md border border-[var(--border)] bg-[var(--panel-soft)]" />
-                </TableHead>
-                <TableHead className={cn(tableCellBaseClass, "px-3 text-left font-normal")}>
+                  <div className="h-9 w-9 rounded-md border border-border bg-secondary" />
+                </TableCell>
+                <TableCell
+                  className={cn(tableCellBaseClass, "px-3 text-left font-normal")}
+                >
                   {displayName}
-                </TableHead>
-                <TableHead
+                </TableCell>
+                <TableCell
                   className={cn(
                     tableCellBaseClass,
                     "px-3 text-left font-normal",
@@ -79,16 +92,16 @@ export default function StorageItemsTable({ items }: StorageItemsTableProps) {
                   )}
                 >
                   {displayRarity}
-                </TableHead>
-                <TableHead
+                </TableCell>
+                <TableCell
                   className={cn(
                     tableCellBaseClass,
                     tableCellRightBorderClass,
-                    "rounded-r-xl px-4 text-left font-normal text-[#A1ADD6]"
+                    "rounded-r-xl px-4 text-left font-normal text-muted-foreground"
                   )}
                 >
                   {priceLabel}
-                </TableHead>
+                </TableCell>
               </TableRow>
             );
           })}

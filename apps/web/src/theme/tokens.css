@@ -1,11 +1,23 @@
 :root[data-theme="dark"] {
-  --bg: #0A0B12;
-  --panel: #14161F;
-  --panel-soft: #12141D;
-  --border: #323648;
-  --text: #EBEEF5;
-  --text-muted: #8C91AA;
-  --accent: #00E5D4;
-  --accent-soft: #00B4AA;
-  --danger: #FF5A78;
+  --background: 232 29% 6%;
+  --foreground: 222 33% 94%;
+  --card: 229 22% 10%;
+  --card-foreground: 222 33% 94%;
+  --popover: 229 22% 10%;
+  --popover-foreground: 222 33% 94%;
+  --primary: 176 100% 45%;
+  --primary-foreground: 232 29% 6%;
+  --secondary: 229 23% 9%;
+  --secondary-foreground: 222 33% 94%;
+  --muted: 229 23% 9%;
+  --muted-foreground: 230 15% 61%;
+  --accent: 229 18% 24%;
+  --accent-foreground: 222 33% 94%;
+  --destructive: 349 100% 68%;
+  --destructive-foreground: 232 29% 6%;
+  --border: 229 18% 24%;
+  --input: 229 18% 24%;
+  --ring: 176 100% 45%;
+  --radius: 0.5rem;
+  --brand: #5F6BFF;
 }
