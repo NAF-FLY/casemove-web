@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 import { supabaseAdmin } from "../../core/supabase";
 import { steamManager } from "../../core/steam-manager";
+import { saveRefreshToken, getRefreshToken } from "./credentials";
 
 type CreateAccountBody = {
   steamLogin: string;
@@ -11,7 +12,7 @@ type CreateAccountBody = {
 };
 
 type ConnectBody = {
-  password: string;
+  password?: string;
   twoFactorCode?: string;
 };
 
@@ -80,15 +81,30 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
         .single();
 
       if (insertError || !inserted) {
+        // Check for unique constraint violation
+        if (insertError?.code === "23505") {
+          return reply
+            .code(409)
+            .send({ message: "This Steam account is already added." });
+        }
+        console.error("Failed to insert steam account:", insertError);
         return reply.code(500).send({ message: "Failed to add account" });
       }
 
       try {
-        const client = await steamManager.connect(userId, inserted.id, {
-          username: normalizedLogin,
-          password: normalizedPassword,
-          twoFactorCode
-        });
+        const client = await steamManager.connect(
+          userId,
+          inserted.id,
+          {
+            username: normalizedLogin,
+            password: normalizedPassword,
+            twoFactorCode
+          },
+          // Save refresh token when received (callback set before login)
+          async (token) => {
+            await saveRefreshToken(inserted.id, token);
+          }
+        );
 
         const personaName = client.getPersonaName();
         const nowIso = new Date().toISOString();
@@ -150,10 +166,6 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
       const { password, twoFactorCode } = request.body;
       const normalizedPassword = password?.trim();
 
-      if (!normalizedPassword) {
-        return reply.code(400).send({ message: "Password is required." });
-      }
-
       const { data: account } = await supabaseAdmin
         .from("steam_accounts")
         .select(
@@ -167,12 +179,75 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
         return reply.code(404).send({ message: "Account not found" });
       }
 
-      try {
-        const client = await steamManager.connect(userId, account.id, {
-          username: account.steam_login,
-          password: normalizedPassword,
-          twoFactorCode
+      // Try to use saved refresh token first
+      const savedToken = await getRefreshToken(account.id);
+      if (savedToken) {
+        try {
+          console.log(`Attempting token-based reconnect for account ${account.id}`);
+          const client = await steamManager.connect(
+            userId,
+            account.id,
+            {
+              username: account.steam_login,
+              refreshToken: savedToken
+            },
+            async (token) => {
+              await saveRefreshToken(account.id, token);
+            }
+          );
+
+          const personaName = client.getPersonaName();
+          const nowIso = new Date().toISOString();
+
+          const { data: updated } = await supabaseAdmin
+            .from("steam_accounts")
+            .update({
+              persona_name: personaName,
+              status: "connected",
+              last_login_at: nowIso
+            })
+            .eq("id", account.id)
+            .eq("user_id", userId)
+            .select(
+              "id, steam_login, persona_name, status, proxy_socks5, last_login_at, created_at, updated_at"
+            )
+            .single();
+
+          await supabaseAdmin
+            .from("user_profiles")
+            .update({ active_steam_account_id: account.id })
+            .eq("user_id", userId);
+
+          steamManager.setActiveAccount(userId, account.id);
+
+          return { account: updated ?? account };
+        } catch (tokenError) {
+          console.warn(`Token-based reconnect failed for account ${account.id}:`, tokenError);
+          // Token expired or invalid, fall through to password-based login
+        }
+      }
+
+      // Password-based login (fallback or no token available)
+      if (!normalizedPassword) {
+        return reply.code(401).send({ 
+          message: "Session expired. Password required.",
+          requiresPassword: true
         });
+      }
+
+      try {
+        const client = await steamManager.connect(
+          userId,
+          account.id,
+          {
+            username: account.steam_login,
+            password: normalizedPassword,
+            twoFactorCode
+          },
+          async (token) => {
+            await saveRefreshToken(account.id, token);
+          }
+        );
 
         const personaName = client.getPersonaName();
         const nowIso = new Date().toISOString();

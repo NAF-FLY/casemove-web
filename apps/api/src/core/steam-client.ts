@@ -1,11 +1,13 @@
 import type { StorageUnitDTO } from "@casemove/shared-types";
 import GlobalOffensive from "globaloffensive";
+import SteamCommunity from "steamcommunity";
 import SteamUser from "steam-user";
 
 export type SteamCredentials = {
   username: string;
-  password: string;
+  password?: string;
   twoFactorCode?: string;
+  refreshToken?: string;
 };
 
 export type MoveItemsPayload = {
@@ -19,6 +21,7 @@ export interface ISteamClient {
   login(credentials: SteamCredentials): Promise<void>;
   logOff(): void;
   getInventory(): Promise<SteamInventoryItem[]>;
+  getInventoryViaCommunity(): Promise<SteamInventoryItem[]>;
   getStorageUnits(): Promise<StorageUnitDTO[]>;
   getStorageItems(storageId: string): Promise<SteamInventoryItem[]>;
   moveItems(payload: MoveItemsPayload): Promise<void>;
@@ -26,34 +29,70 @@ export interface ISteamClient {
   loadItemSchema(timeoutMs?: number): Promise<void>;
   getItemSchemaName(defIndex?: string | number): string | null;
   getItemSchemaItem(defIndex?: string | number): CsgItemSchemaItem | null;
+  setRefreshTokenCallback(callback: (token: string) => void): void;
 }
 
 export class SteamClient implements ISteamClient {
   private client: SteamUser;
   private gc!: GlobalOffensive;
+  private community: SteamCommunity;
   private ready = false;
   private gcReady = false;
+  private webSessionReady = false;
   private itemSchema: CsgItemSchema | null = null;
   private itemSchemaPromise: Promise<void> | null = null;
   private itemSchemaByDefIndex: Map<string, CsgItemSchemaItem> | null = null;
   private personaName: string | null = null;
+  private onRefreshToken?: (token: string) => void;
 
   constructor() {
     this.client = new SteamUser();
+    this.client.on("error", (err) => {
+      console.warn("SteamUser global error:", err.message);
+    });
+    this.community = new SteamCommunity();
+  }
+
+  setRefreshTokenCallback(callback: (token: string) => void): void {
+    this.onRefreshToken = callback;
   }
 
   async login(credentials: SteamCredentials): Promise<void> {
     const logOnPromise = this.waitForLogOn(credentials);
-    const logOnDetails: SteamUser.LogOnDetailsNamePass = {
-      accountName: credentials.username,
-      password: credentials.password
-    };
 
-    this.client.logOn(logOnDetails);
+    // Handle refresh token event - call callback when token is received
+    this.client.on("refreshToken", (token: string) => {
+      if (this.onRefreshToken) {
+        this.onRefreshToken(token);
+      }
+    });
+
+    // Use refresh token if available, otherwise use password
+    if (credentials.refreshToken) {
+      this.client.logOn({ refreshToken: credentials.refreshToken });
+    } else if (credentials.password) {
+      const logOnDetails: SteamUser.LogOnDetailsNamePass = {
+        accountName: credentials.username,
+        password: credentials.password
+      };
+      this.client.logOn(logOnDetails);
+    } else {
+      throw new Error("Either password or refreshToken is required");
+    }
 
     await logOnPromise;
     this.ready = true;
     this.personaName = await this.resolvePersonaName();
+
+    // Setup web session handler for Steam Community API
+    this.client.on("webSession", (_sessionID, cookies) => {
+      this.community.setCookies(cookies);
+      this.webSessionReady = true;
+      console.log("Steam web session ready");
+    });
+
+    // Request web session
+    this.client.webLogOn();
 
     this.gc = new GlobalOffensive(this.client);
     this.gc.once("connectedToGC", () => {
@@ -67,6 +106,7 @@ export class SteamClient implements ISteamClient {
     this.client.logOff();
     this.ready = false;
     this.gcReady = false;
+    this.webSessionReady = false;
     this.itemSchema = null;
     this.itemSchemaPromise = null;
     this.itemSchemaByDefIndex = null;
@@ -78,44 +118,65 @@ export class SteamClient implements ISteamClient {
       throw new Error("Steam client not ready");
     }
 
+    // Try GC inventory first (better data quality, e.g. floats)
+    try {
+      console.log("Fetching inventory via GC");
+      return await this.waitForGcInventory(2000); // Short timeout because if we are connected, it's instant
+    } catch (err) {
+      console.warn("GC inventory fetch failed/timed out, falling back to Steam Community API", err);
+    }
+
+    // Fallback/Alternative: Steam Community API
+    if (this.webSessionReady) {
+      try {
+        console.log("Fetching inventory via Steam Community API");
+        return await this.getInventoryViaCommunity();
+      } catch (err) {
+        console.warn("Steam Community inventory failed", err);
+      }
+    }
+    
+    throw new Error("Failed to fetch inventory (GC and Web both failed)");
+  }
+
+  async getInventoryViaCommunity(): Promise<SteamInventoryItem[]> {
+    if (!this.webSessionReady) {
+      throw new Error("Web session not ready");
+    }
+
     const steamId = this.client.steamID;
     if (!steamId) {
       throw new Error("No SteamID, user is not logged in");
     }
-    const steamIdValue: NonNullable<SteamUser["steamID"]> = steamId;
 
-    const client = this.client as SteamUser & {
-      getUserInventoryContents?: (
-        steamId: SteamUser["steamID"],
-        appId: number,
-        contextId: number,
+    type InventoryCallback = (
+      err: Error | null,
+      inventory: SteamInventoryItem[]
+    ) => void;
+
+    return new Promise((resolve, reject) => {
+      (this.community.getUserInventoryContents as (
+        userID: typeof steamId,
+        appID: number,
+        contextID: number,
         tradableOnly: boolean,
-        callback: (err: Error | null, items: SteamInventoryItem[]) => void
-      ) => void;
-    };
-
-    let rawItems: SteamInventoryItem[];
-
-    if (typeof client.getUserInventoryContents === "function") {
-      rawItems = await new Promise<SteamInventoryItem[]>((resolve, reject) => {
-        client.getUserInventoryContents?.(
-          steamIdValue,
-          730,
-          2,
-          false,
-          (err, items) => {
+        language: string,
+        callback: InventoryCallback
+      ) => void)(
+        steamId,
+        730,  // CS2 appId
+        2,    // contextId
+        false, // tradableOnly
+        "english", // language
+        (err, inventory) => {
           if (err) {
             reject(err);
             return;
           }
-          resolve(items ?? []);
+          resolve(inventory ?? []);
         }
-        );
-      });
-    } else {
-      rawItems = await this.waitForGcInventory();
-    }
-    return rawItems;
+      );
+    });
   }
 
   async getStorageUnits(): Promise<StorageUnitDTO[]> {

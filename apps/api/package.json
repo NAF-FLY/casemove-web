@@ -8,19 +8,21 @@
   "dependencies": {
     "@casemove/shared-types": "workspace:*",
     "@supabase/supabase-js": "^2.49.1",
-    "dotenv": "^16.4.5",
     "debug": "latest",
+    "dotenv": "^16.4.5",
     "fastify": "^4.26.2",
     "fastify-plugin": "^4.5.1",
     "globaloffensive": "latest",
     "jsonwebtoken": "latest",
-    "steam-user": "latest"
+    "steam-user": "latest",
+    "steamcommunity": "^3.49.0"
   },
   "devDependencies": {
-    "@types/node": "^20.11.10",
-    "@types/jsonwebtoken": "^9.0.6",
-    "@types/steam-user": "^5.1.1",
     "@types/globaloffensive": "^2.3.4",
+    "@types/jsonwebtoken": "^9.0.6",
+    "@types/node": "^20.11.10",
+    "@types/steam-user": "^5.1.1",
+    "@types/steamcommunity": "^3.43.8",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   }

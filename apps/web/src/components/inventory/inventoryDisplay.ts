@@ -125,7 +125,13 @@ export function buildInventoryDisplayItems(
     const cleanedRarity = getCleanRarity(item.schema?.rarity);
     const displayRarity = cleanedRarity ?? "Unknown";
     const iconUrl = item.schema?.image ?? item.iconUrl;
-    const priceLabel = "—";
+    const priceLabel =
+      item.price && typeof item.price === "number"
+        ? new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: item.priceCurrency ?? "USD"
+          }).format(item.price)
+        : "—";
     const floatValue = item.paintWear;
     const hasFloat =
       typeof floatValue === "number" && Number.isFinite(floatValue);

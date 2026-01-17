@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 import AppHeader from "@/components/layout/AppHeader";
 import PageContainer from "@/components/layout/PageContainer";
@@ -10,28 +10,36 @@ import {
   DangerZoneCard,
   ProfileOverviewCard,
   SettingsCard,
+  SteamAccountsListCard,
   StatsGrid,
   type SteamFormState
 } from "@/components/profile";
 import { cn } from "@/lib/utils";
+
+const initialSteamForm: SteamFormState = {
+  login: "",
+  password: "",
+  twoFactorCode: "",
+  proxy: ""
+};
 
 export default function HomePage() {
   const [collapsed, setCollapsed] = useState(false);
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
   const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(true);
   const [privacyEnabled, setPrivacyEnabled] = useState(false);
-  const [steamForm, setSteamForm] = useState<SteamFormState>({
-    login: "",
-    password: "",
-    twoFactorCode: "",
-    proxy: ""
-  });
+  const [steamForm, setSteamForm] = useState<SteamFormState>(initialSteamForm);
+
   const handleSteamFormValueChange = (
     field: keyof SteamFormState,
     value: string
   ) => {
     setSteamForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  const handleClearSteamForm = useCallback(() => {
+    setSteamForm(initialSteamForm);
+  }, []);
 
   return (
     <PageContainer className="px-0">
@@ -49,8 +57,10 @@ export default function HomePage() {
           <AppHeader />
           <div className="px-8 pb-10">
             <ProfileOverviewCard />
+            <SteamAccountsListCard />
             <AddSteamAccountCard
               steamForm={steamForm}
+              onClearForm={handleClearSteamForm}
               onValueChange={handleSteamFormValueChange}
             />
             <StatsGrid />
@@ -69,3 +79,4 @@ export default function HomePage() {
     </PageContainer>
   );
 }
+

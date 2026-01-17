@@ -1,4 +1,5 @@
 import { Checkbox, TableCell, TableRow } from "@heroui/react";
+import Image from "next/image";
 import {
   tableCellBaseClass,
   tableCellLeftBorderClass,
@@ -82,10 +83,13 @@ export default function InventoryRow({
       <TableCell className={cn(tableCellBaseClass, "w-[40px] px-2")}>
         <div className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-secondary">
           {item.iconUrl ? (
-            <img
+            <Image
               alt={item.name}
               className="h-8 w-8 rounded-md object-contain"
+              height={32}
+              sizes="32px"
               src={item.iconUrl}
+              width={32}
             />
           ) : null}
         </div>

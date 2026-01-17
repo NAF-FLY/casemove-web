@@ -4,8 +4,10 @@ import type {
 } from "@casemove/shared-types";
 
 import type { ISteamClient, SteamInventoryItem } from "../../core/steam-client";
+import { supabaseAdmin } from "../../core/supabase";
 import { skinSchemaService } from "../schema/skin-schema.service";
 import { getSchemaItemPriority, matchesTypeHint } from "../schema/schema-helpers";
+import { priceService } from "./price.service";
 
 type ItemSchemaLookup = Pick<
   ISteamClient,
@@ -15,12 +17,63 @@ type ItemSchemaLookup = Pick<
 type ItemSchemaItem = ReturnType<ItemSchemaLookup["getItemSchemaItem"]>;
 
 export async function getInventory(
-  client: ISteamClient
+  client: ISteamClient | undefined,
+  steamAccountId: string
 ): Promise<InventoryItemDTO[]> {
+  // 1. Check cache
+  const { data: cache } = await supabaseAdmin
+    .from("steam_inventory_cache")
+    .select("items, updated_at")
+    .eq("steam_account_id", steamAccountId)
+    .single();
+
+  if (cache) {
+    const age = Date.now() - new Date(cache.updated_at).getTime();
+    if (age < 60 * 60 * 1000) { // 1 hour
+      console.log("Fetching inventory from cache");
+      return cache.items as InventoryItemDTO[];
+    }
+    console.log(`Inventory cache stale (${age / 1000}s old), refreshing...`);
+  } else {
+    console.log("Inventory cache miss, fetching from Steam...");
+  }
+
+  // 2. Fetch from Steam
+  if (!client) {
+    throw new Error("Inventory cache miss and Steam client not connected. Please reconnect.");
+  }
+
   const rawItems = await client.getInventory();
   const resolvedItems = resolveSteamInventory(rawItems);
   await client.loadItemSchema();
-  return resolvedItems.map((item) => mapSteamItemToDTO(item, client));
+  const dtos = resolvedItems.map((item) => mapSteamItemToDTO(item, client));
+
+  // 3. Populate prices immediately (so they are cached)
+  const marketHashNames = dtos
+    .map((d) => d.marketHashName)
+    .filter((n): n is string => !!n);
+  
+  const uniqueNames = Array.from(new Set(marketHashNames));
+  const priceMap = await priceService.getPrices(uniqueNames);
+
+  for (const dto of dtos) {
+    if (dto.marketHashName) {
+      const price = priceMap.get(dto.marketHashName);
+      if (typeof price === 'number') {
+        dto.price = price;
+        dto.priceCurrency = 'USD';
+      }
+    }
+  }
+
+  // 4. Save to cache
+  await supabaseAdmin.from("steam_inventory_cache").upsert({
+    steam_account_id: steamAccountId,
+    items: dtos,
+    updated_at: new Date().toISOString()
+  });
+
+  return dtos;
 }
 
 function resolveSteamInventory(
@@ -421,7 +474,7 @@ function mapSteamItemToDTO(
   const defIndex = rawItem.def_index;
   const paintIndex = rawItem.paint_index;
   const paintWear = getPaintWear(rawItem);
-  const wearName = getWearName(paintWear);
+  const wearName = getWearName(paintWear ?? undefined);
   const hasPaintWear = paintWear !== null && Number.isFinite(paintWear);
   const schemaItem = schemaLookup.getItemSchemaItem(defIndex);
   const schemaName = schemaLookup.getItemSchemaName(defIndex);
@@ -509,11 +562,17 @@ function mapSteamItemToDTO(
 
   // Mapping debug log removed to reduce console noise.
 
+  // Steam returns icon_url as just a CDN hash, need to prepend base URL
+  const iconHash = rawItem.icon_url ?? rawItem.icon ?? null;
+  const iconUrl = iconHash && !iconHash.startsWith("http")
+    ? `https://steamcommunity-a.akamaihd.net/economy/image/${iconHash}`
+    : iconHash;
+
   return {
     id: String(rawItem.id ?? rawItem.assetid ?? ""),
     appId: 730,
     marketHashName,
-    iconUrl: rawItem.icon_url ?? rawItem.icon ?? null,
+    iconUrl,
     moveable: Boolean(rawItem.item_moveable ?? rawItem.marketable ?? true),
     tradable: Boolean(rawItem.tradable ?? true),
     paintWear: hasPaintWear ? paintWear : null,

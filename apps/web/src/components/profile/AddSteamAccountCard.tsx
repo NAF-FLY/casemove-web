@@ -1,6 +1,11 @@
+"use client";
+
 import type { ReactNode } from "react";
-import { Button, Card, CardBody, CardHeader, Input } from "@heroui/react";
+import { useEffect, useState } from "react";
+import { Accordion, AccordionItem, Button, Input, Spinner } from "@heroui/react";
 import { Link2, Lock, ShieldCheck, User } from "lucide-react";
+
+import { useSteamAccountsStore } from "@/store/steamAccounts.store";
 
 export type SteamFormState = {
   login: string;
@@ -28,6 +33,7 @@ type SteamInputFieldProps = {
   type?: string;
   icon: ReactNode;
   value: string;
+  disabled?: boolean;
   onValueChange: (field: keyof SteamFormState, value: string) => void;
 };
 
@@ -38,11 +44,13 @@ function SteamInputField({
   type = "text",
   icon,
   value,
+  disabled,
   onValueChange
 }: SteamInputFieldProps) {
   return (
     <Input
       classNames={steamInputClassNames}
+      isDisabled={disabled}
       label={label}
       placeholder={placeholder}
       radius="lg"
@@ -95,54 +103,102 @@ const steamInputFields: SteamInputFieldConfig[] = [
 type AddSteamAccountCardProps = {
   steamForm: SteamFormState;
   onValueChange: (field: keyof SteamFormState, value: string) => void;
+  onClearForm: () => void;
 };
 
 export default function AddSteamAccountCard({
   steamForm,
-  onValueChange
+  onValueChange,
+  onClearForm
 }: AddSteamAccountCardProps) {
+  const { addAccount, actionLoading, addError, clearAddError } = useSteamAccountsStore();
+
+  const isLoading = actionLoading === "add";
+  const isFormValid = steamForm.login.trim() && steamForm.password.trim();
+
+  const handleSubmit = async () => {
+    if (!isFormValid || isLoading) return;
+
+    clearAddError();
+
+    try {
+      await addAccount({
+        steamLogin: steamForm.login.trim(),
+        password: steamForm.password.trim(),
+        twoFactorCode: steamForm.twoFactorCode.trim() || undefined,
+        proxySocks5: steamForm.proxy.trim() || undefined
+      });
+      onClearForm();
+    } catch {
+      // Error is handled by the store
+    }
+  };
+
   return (
-    <Card className="mt-6 overflow-hidden border border-border/60 bg-card/80">
-      <CardHeader className="flex flex-col items-start gap-1 border-b border-border/60 px-6 py-5">
-        <h2 className="text-lg font-semibold text-foreground">
-          Добавить Steam аккаунт
-        </h2>
-        <p className="text-sm text-muted-foreground">
-          Подключение Steam будет доступно позже. Пока это черновой блок для
-          интерфейса.
-        </p>
-      </CardHeader>
-      <CardBody className="space-y-4 px-6 py-5">
-        <div className="grid gap-4 md:grid-cols-2">
-          {steamInputFields.map((field) => (
-            <SteamInputField
-              key={field.field}
-              field={field.field}
-              icon={field.icon}
-              label={field.label}
-              placeholder={field.placeholder}
-              type={field.type}
-              value={steamForm[field.field]}
-              onValueChange={onValueChange}
-            />
-          ))}
+    <Accordion 
+      className="mt-6 px-0" 
+      variant="splitted"
+    >
+      <AccordionItem
+        key="add-steam-account"
+        aria-label="Добавить Steam аккаунт"
+        classNames={{
+          base: "px-0 shadow-none border border-border/60 rounded-xl overflow-hidden [&]:bg-[hsl(229,22%,10%,0.8)]",
+          heading: "px-0",
+          trigger: "px-6 py-5 border-b border-transparent data-[open=true]:border-border/60 transition-colors",
+          content: "px-6 py-5",
+          title: "text-lg font-semibold text-foreground",
+          subtitle: "text-sm text-muted-foreground"
+        }}
+        subtitle="Введите данные Steam аккаунта для подключения."
+        title="Добавить Steam аккаунт"
+      >
+        <div>
+          {addError && (
+            <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {addError}
+            </div>
+          )}
+          <div className="grid gap-4 md:grid-cols-2">
+            {steamInputFields.map((field) => (
+              <SteamInputField
+                key={field.field}
+                disabled={isLoading}
+                field={field.field}
+                icon={field.icon}
+                label={field.label}
+                placeholder={field.placeholder}
+                type={field.type}
+                value={steamForm[field.field]}
+                onValueChange={onValueChange}
+              />
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Steam Guard код требуется если включена двухфакторная аутентификация.
+            </p>
+            <Button
+              className="h-11 px-6"
+              color="primary"
+              isDisabled={!isFormValid || isLoading}
+              radius="lg"
+              type="button"
+              onPress={handleSubmit}
+            >
+              {isLoading ? (
+                <>
+                  <Spinner color="current" size="sm" />
+                  <span className="ml-2">Подключение...</span>
+                </>
+              ) : (
+                "Подключить Steam"
+              )}
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            Запуск подключения будет доступен после финального включения Steam
-            интеграции.
-          </p>
-          <Button
-            className="h-11 px-6"
-            color="primary"
-            isDisabled
-            radius="lg"
-            type="button"
-          >
-            Подключить Steam
-          </Button>
-        </div>
-      </CardBody>
-    </Card>
+      </AccordionItem>
+    </Accordion>
   );
 }
+

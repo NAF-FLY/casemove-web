@@ -15,5 +15,7 @@ export type InventoryItemDTO = {
   moveable: boolean;
   tradable: boolean;
   paintWear?: number | null;
+  price?: number | null;
+  priceCurrency?: string | null;
   schema?: InventoryItemSchemaDTO | null;
 };

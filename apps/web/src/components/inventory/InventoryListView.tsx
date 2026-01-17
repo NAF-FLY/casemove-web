@@ -8,6 +8,7 @@ import {
   TableRow,
   Tooltip
 } from "@heroui/react";
+import Image from "next/image";
 import {
   tableCellBaseClass,
   tableCellLeftBorderClass,
@@ -96,10 +97,13 @@ export default function InventoryListView({
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/60 bg-background/70">
                     {iconUrl ? (
-                      <img
+                      <Image
                         alt={displayName}
                         className="h-8 w-8 rounded-md object-contain"
+                        height={32}
+                        sizes="32px"
                         src={iconUrl}
+                        width={32}
                       />
                     ) : null}
                   </div>

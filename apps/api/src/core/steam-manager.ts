@@ -11,6 +11,7 @@ export interface ISteamManager {
   getActiveClient(userId: string): ISteamClient;
   hasClient(userId: string, steamAccountId: string): boolean;
   hasActiveClient(userId: string): boolean;
+  getActiveAccountId(userId: string): string;
   setActiveAccount(userId: string, steamAccountId: string): void;
   disconnect(userId: string, steamAccountId: string): void;
   disconnectAllForUser(userId: string): void;
@@ -34,7 +35,8 @@ export class SteamManager implements ISteamManager {
   async connect(
     userId: string,
     steamAccountId: string,
-    credentials: SteamCredentials
+    credentials: SteamCredentials,
+    onRefreshToken?: (token: string) => void
   ): Promise<ISteamClient> {
     const userClients = this.getUserClients(userId);
     const existingClient = userClients.get(steamAccountId);
@@ -44,6 +46,12 @@ export class SteamManager implements ISteamManager {
     }
 
     const client = new SteamClient();
+    
+    // Set callback BEFORE login so we capture the refreshToken event
+    if (onRefreshToken) {
+      client.setRefreshTokenCallback(onRefreshToken);
+    }
+    
     await client.login(credentials);
     userClients.set(steamAccountId, client);
 
@@ -86,6 +94,14 @@ export class SteamManager implements ISteamManager {
     }
 
     return this.hasClient(userId, activeAccountId);
+  }
+
+  getActiveAccountId(userId: string): string {
+    const activeAccountId = this.activeAccountIdByUser.get(userId);
+    if (!activeAccountId) {
+      throw new Error("No active Steam account");
+    }
+    return activeAccountId;
   }
 
   setActiveAccount(userId: string, steamAccountId: string): void {
