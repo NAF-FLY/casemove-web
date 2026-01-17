@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 
 import { supabaseAdmin } from "../../core/supabase";
 import { steamManager } from "../../core/steam-manager";
+import type { ISteamClient } from "../../core/steam-client";
 import { saveRefreshToken, getRefreshToken } from "./credentials";
 
 type CreateAccountBody = {
@@ -16,6 +17,103 @@ type ConnectBody = {
   twoFactorCode?: string;
 };
 
+// Fields to select when returning steam account data
+const ACCOUNT_SELECT_FIELDS = "id, steam_login, persona_name, steam_id, avatar_url, profile_url, trade_url, account_created_at, profile_updated_at, status, proxy_socks5, last_login_at, created_at, updated_at";
+
+// Profile data cache duration (7 days in milliseconds)
+const PROFILE_CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Checks if profile data needs to be refreshed.
+ * Returns true if profile data is missing or older than 7 days.
+ */
+function shouldRefreshProfileData(account: {
+  steam_id: string | null;
+  avatar_url: string | null;
+  profile_updated_at: string | null;
+}): boolean {
+  console.log("[Profile] Checking if refresh needed for account:", account.steam_id, {
+    hasAvatar: !!account.avatar_url,
+    updatedAt: account.profile_updated_at
+  });
+
+  // If essential data is missing, refresh
+  if (!account.steam_id) {
+    console.log("[Profile] Refresh needed: missing steam_id");
+    return true;
+  }
+  
+  // If never updated, refresh
+  if (!account.profile_updated_at) {
+    console.log("[Profile] Refresh needed: never updated");
+    return true;
+  }
+  
+  // Check if data is older than cache duration
+  const lastUpdate = new Date(account.profile_updated_at).getTime();
+  const now = Date.now();
+  const age = now - lastUpdate;
+  
+  if (age > PROFILE_CACHE_DURATION_MS) {
+    console.log(`[Profile] Refresh needed: data is stale (${Math.round(age / 1000 / 60 / 60)}h old)`);
+    return true;
+  }
+  
+  console.log(`[Profile] Skip refresh: data is fresh (${Math.round(age / 1000 / 60 / 60)}h old)`);
+  return false;
+}
+
+/**
+ * Fetches profile data from Steam client and saves it to database.
+ * Only fetches if data is missing or older than 7 days.
+ */
+async function fetchAndSaveProfileData(
+  client: ISteamClient,
+  accountId: string,
+  userId: string,
+  existingAccount?: { steam_id: string | null; avatar_url: string | null; profile_updated_at: string | null }
+): Promise<void> {
+  // Check if we need to refresh
+  if (existingAccount && !shouldRefreshProfileData(existingAccount)) {
+    return;
+  }
+
+  // Wait a bit for web session to be ready
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  
+  try {
+    const profileData = await client.getProfileData();
+    if (!profileData) {
+      console.warn("[Profile] Could not get profile data for account", accountId);
+      return;
+    }
+
+    console.log("[Profile] Got profile data:", profileData);
+
+    // Only update fields that are present to avoid overwriting with nulls
+    // (e.g. if miniprofile fetch failed but we have data in DB)
+    const updatePayload: Record<string, any> = {
+      steam_id: profileData.steamId,
+      profile_updated_at: new Date().toISOString()
+    };
+
+    if (profileData.avatarUrl) updatePayload.avatar_url = profileData.avatarUrl;
+    if (profileData.profileUrl) updatePayload.profile_url = profileData.profileUrl;
+    if (profileData.tradeUrl) updatePayload.trade_url = profileData.tradeUrl;
+    if (profileData.accountCreatedAt) updatePayload.account_created_at = profileData.accountCreatedAt.toISOString();
+
+    console.log("[Profile] Saving update updatePayload:", updatePayload);
+
+    await supabaseAdmin
+      .from("steam_accounts")
+      .update(updatePayload)
+      .eq("id", accountId)
+      .eq("user_id", userId);
+  } catch (err) {
+    console.warn("Failed to fetch/save profile data:", err);
+  }
+}
+
 export async function registerSteamAccountsRoutes(app: FastifyInstance) {
   app.get("/steam-accounts", async (request, reply) => {
     const userId = request.user?.userId;
@@ -28,7 +126,7 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
         supabaseAdmin
           .from("steam_accounts")
           .select(
-            "id, steam_login, persona_name, status, proxy_socks5, last_login_at, created_at, updated_at"
+            "id, steam_login, persona_name, steam_id, avatar_url, profile_url, trade_url, account_created_at, status, proxy_socks5, last_login_at, created_at, updated_at"
           )
           .eq("user_id", userId)
           .order("created_at", { ascending: false }),
@@ -75,9 +173,7 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
           proxy_socks5: proxySocks5 ?? null,
           status: "pending"
         })
-        .select(
-          "id, steam_login, persona_name, status, proxy_socks5, last_login_at, created_at, updated_at"
-        )
+        .select(ACCOUNT_SELECT_FIELDS)
         .single();
 
       if (insertError || !inserted) {
@@ -118,9 +214,7 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
           })
           .eq("id", inserted.id)
           .eq("user_id", userId)
-          .select(
-            "id, steam_login, persona_name, status, proxy_socks5, last_login_at, created_at, updated_at"
-          )
+          .select(ACCOUNT_SELECT_FIELDS)
           .single();
 
         await supabaseAdmin
@@ -129,6 +223,9 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
           .eq("user_id", userId);
 
         steamManager.setActiveAccount(userId, inserted.id);
+
+        // Fetch and save profile data in background (don't block response)
+        void fetchAndSaveProfileData(client, inserted.id, userId);
 
         return {
           account: updated ?? inserted
@@ -168,9 +265,7 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
 
       const { data: account } = await supabaseAdmin
         .from("steam_accounts")
-        .select(
-          "id, steam_login, persona_name, status, proxy_socks5, last_login_at, created_at, updated_at"
-        )
+        .select(ACCOUNT_SELECT_FIELDS)
         .eq("id", id)
         .eq("user_id", userId)
         .maybeSingle();
@@ -208,9 +303,7 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
             })
             .eq("id", account.id)
             .eq("user_id", userId)
-            .select(
-              "id, steam_login, persona_name, status, proxy_socks5, last_login_at, created_at, updated_at"
-            )
+            .select(ACCOUNT_SELECT_FIELDS)
             .single();
 
           await supabaseAdmin
@@ -219,6 +312,9 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
             .eq("user_id", userId);
 
           steamManager.setActiveAccount(userId, account.id);
+
+          // Fetch and save profile data in background (only if stale)
+          void fetchAndSaveProfileData(client, account.id, userId, account);
 
           return { account: updated ?? account };
         } catch (tokenError) {
@@ -261,9 +357,7 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
           })
           .eq("id", account.id)
           .eq("user_id", userId)
-          .select(
-            "id, steam_login, persona_name, status, proxy_socks5, last_login_at, created_at, updated_at"
-          )
+          .select(ACCOUNT_SELECT_FIELDS)
           .single();
 
         await supabaseAdmin
@@ -272,6 +366,9 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
           .eq("user_id", userId);
 
         steamManager.setActiveAccount(userId, account.id);
+
+        // Fetch and save profile data in background (only if stale)
+        void fetchAndSaveProfileData(client, account.id, userId, account);
 
         return { account: updated ?? account };
       } catch (error) {

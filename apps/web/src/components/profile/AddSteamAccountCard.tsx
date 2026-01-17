@@ -136,7 +136,7 @@ export default function AddSteamAccountCard({
 
   return (
     <Accordion 
-      className="mt-6 px-0" 
+      className="px-0 m-0" 
       variant="splitted"
     >
       <AccordionItem

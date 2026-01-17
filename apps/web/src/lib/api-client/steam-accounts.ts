@@ -4,6 +4,12 @@ export type SteamAccount = {
   id: string;
   steam_login: string;
   persona_name: string | null;
+  steam_id: string | null;
+  avatar_url: string | null;
+  profile_url: string | null;
+  trade_url: string | null;
+  account_created_at: string | null;
+  profile_updated_at: string | null;
   status: SteamAccountStatus;
   proxy_socks5: string | null;
   last_login_at: string | null;

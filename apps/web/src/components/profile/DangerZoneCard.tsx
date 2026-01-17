@@ -40,7 +40,7 @@ function DangerActionButton({ children, startContent }: DangerActionButtonProps)
 
 export default function DangerZoneCard() {
   return (
-    <Card className="mt-6 overflow-hidden border border-destructive/40 bg-card/80">
+    <Card className="overflow-hidden border border-destructive/40 bg-card/80">
       <CardHeader className="flex flex-col items-start gap-1 border-b border-destructive/30 px-6 py-5">
         <h2 className="text-lg font-semibold text-destructive">Danger Zone</h2>
         <p className="text-sm text-muted-foreground">

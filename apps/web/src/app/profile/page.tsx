@@ -11,7 +11,6 @@ import {
   ProfileOverviewCard,
   SettingsCard,
   SteamAccountsListCard,
-  StatsGrid,
   type SteamFormState
 } from "@/components/profile";
 import { cn } from "@/lib/utils";
@@ -55,28 +54,41 @@ export default function HomePage() {
           )}
         >
           <AppHeader />
-          <div className="px-8 pb-10">
-            <ProfileOverviewCard />
-            <SteamAccountsListCard />
-            <AddSteamAccountCard
-              steamForm={steamForm}
-              onClearForm={handleClearSteamForm}
-              onValueChange={handleSteamFormValueChange}
-            />
-            <StatsGrid />
-            <SettingsCard
-              autoSyncEnabled={autoSyncEnabled}
-              priceAlertsEnabled={priceAlertsEnabled}
-              privacyEnabled={privacyEnabled}
-              onAutoSyncChange={setAutoSyncEnabled}
-              onPriceAlertsChange={setPriceAlertsEnabled}
-              onPrivacyChange={setPrivacyEnabled}
-            />
-            <DangerZoneCard />
+          <div className="px-8 pt-6 pb-10">
+            {/* Grid Layout: Main Content vs Sidebar */}
+            <div className="flex flex-col gap-6 xl:grid xl:grid-cols-3 xl:items-start">
+              
+              {/* Main Column (Profile, Accounts List, Add Account) */}
+              <div className="flex flex-col gap-4 min-w-0 xl:col-span-2">
+                <ProfileOverviewCard />
+                
+                <SteamAccountsListCard />
+                
+                <AddSteamAccountCard
+                  steamForm={steamForm}
+                  onClearForm={handleClearSteamForm}
+                  onValueChange={handleSteamFormValueChange}
+                />
+              </div>
+
+              {/* Sidebar Column (Settings, Danger Zone) */}
+              <div className="flex flex-col gap-4 min-w-0 xl:col-span-1">
+                <SettingsCard
+                  autoSyncEnabled={autoSyncEnabled}
+                  priceAlertsEnabled={priceAlertsEnabled}
+                  privacyEnabled={privacyEnabled}
+                  onAutoSyncChange={setAutoSyncEnabled}
+                  onPriceAlertsChange={setPriceAlertsEnabled}
+                  onPrivacyChange={setPrivacyEnabled}
+                />
+                
+                <DangerZoneCard />
+              </div>
+
+            </div>
           </div>
         </div>
       </div>
     </PageContainer>
   );
 }
-

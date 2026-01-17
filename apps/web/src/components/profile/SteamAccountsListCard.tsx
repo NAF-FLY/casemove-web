@@ -96,13 +96,8 @@ function SteamAccountRow({
       }`}
     >
       <div className="flex items-center gap-4">
-        <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-[#00d9ff]/20 via-[#4f46e5]/20 to-[#8b5cf6]/20">
+        <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-gradient-to-br from-[#00d9ff]/20 via-[#4f46e5]/20 to-[#8b5cf6]/20">
           <User className="h-5 w-5 text-muted-foreground" />
-          {isActive && (
-            <div className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-              <Zap className="h-3 w-3 text-primary-foreground" />
-            </div>
-          )}
         </div>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -138,7 +133,7 @@ function SteamAccountRow({
           {statusConfig.label}
         </Chip>
 
-        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex items-center gap-1">
           {isConnected ? (
             <>
               {!isActive && (
@@ -267,7 +262,7 @@ export default function SteamAccountsListCard() {
 
   if (!mounted || (loading && accounts.length === 0)) {
     return (
-      <Card className="mt-6 overflow-hidden border border-border/60 bg-card/80">
+      <Card className="overflow-hidden border border-border/60 bg-card/80">
         <CardBody className="flex items-center justify-center py-12">
           <Spinner size="lg" />
         </CardBody>
@@ -276,7 +271,7 @@ export default function SteamAccountsListCard() {
   }
 
   return (
-    <Card className="mt-6 overflow-hidden border border-border/60 bg-card/80">
+    <Card className="overflow-hidden border border-border/60 bg-card/80">
       <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 px-6 py-5">
         <div>
           <h2 className="text-lg font-semibold text-foreground">

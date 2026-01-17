@@ -46,7 +46,7 @@ export default function SettingsCard({
   onPrivacyChange
 }: SettingsCardProps) {
   return (
-    <Card className="mt-6 overflow-hidden border border-border/60 bg-card/80">
+    <Card className="overflow-hidden border border-border/60 bg-card/80">
       <CardHeader className="flex flex-col items-start gap-1 border-b border-border/60 px-6 py-5">
         <h2 className="text-lg font-semibold text-foreground">Settings</h2>
         <p className="text-sm text-muted-foreground">

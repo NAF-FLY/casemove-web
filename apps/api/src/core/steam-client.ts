@@ -17,6 +17,15 @@ export type MoveItemsPayload = {
   itemIds: string[];
 };
 
+export type SteamProfileData = {
+  steamId: string;
+  personaName: string | null;
+  avatarUrl: string | null;
+  profileUrl: string | null;
+  tradeUrl: string | null;
+  accountCreatedAt: Date | null;
+};
+
 export interface ISteamClient {
   login(credentials: SteamCredentials): Promise<void>;
   logOff(): void;
@@ -26,6 +35,8 @@ export interface ISteamClient {
   getStorageItems(storageId: string): Promise<SteamInventoryItem[]>;
   moveItems(payload: MoveItemsPayload): Promise<void>;
   getPersonaName(): string | null;
+  getProfileData(): Promise<SteamProfileData | null>;
+  getTradeUrl(): Promise<{ url: string; token: string } | null>;
   loadItemSchema(timeoutMs?: number): Promise<void>;
   getItemSchemaName(defIndex?: string | number): string | null;
   getItemSchemaItem(defIndex?: string | number): CsgItemSchemaItem | null;
@@ -193,6 +204,114 @@ export class SteamClient implements ISteamClient {
 
   getPersonaName(): string | null {
     return this.personaName ?? this.client.accountInfo?.name ?? null;
+  }
+
+  async getTradeUrl(): Promise<{ url: string; token: string } | null> {
+    if (!this.webSessionReady) {
+      console.warn("Web session not ready, cannot get trade URL");
+      return null;
+    }
+
+    return new Promise((resolve) => {
+      this.community.getTradeURL((err: Error | null, url: string, token: string) => {
+        if (err) {
+          console.warn("Failed to get trade URL:", err.message);
+          resolve(null);
+          return;
+        }
+        resolve({ url, token });
+      });
+    });
+  }
+
+  async getProfileData(): Promise<SteamProfileData | null> {
+    const steamId = this.client.steamID;
+    if (!steamId) {
+      return null;
+    }
+
+    const steamId64 = steamId.getSteamID64();
+    const personaName = this.getPersonaName();
+    const profileUrl = `https://steamcommunity.com/profiles/${steamId64}`;
+
+    // Try to get trade URL
+    const tradeUrlData = await this.getTradeUrl();
+
+    // Try to get extended profile data via steamcommunity
+    let avatarUrl: string | null = null;
+    let accountCreatedAt: Date | null = null;
+
+    if (this.webSessionReady) {
+      try {
+        const userData = await this.getSteamUserData(steamId64);
+        if (userData) {
+          avatarUrl = userData.avatarUrl;
+          accountCreatedAt = userData.memberSince;
+        }
+      } catch (err) {
+        console.warn("Failed to get extended profile data:", err);
+      }
+    }
+
+    return {
+      steamId: steamId64,
+      personaName,
+      avatarUrl,
+      profileUrl,
+      tradeUrl: tradeUrlData?.url ?? null,
+      accountCreatedAt
+    };
+  }
+
+  private async getSteamUserData(steamId64: string): Promise<{ avatarUrl: string | null; memberSince: Date | null } | null> {
+    try {
+      // Convert SteamID64 to AccountID for miniprofile API
+      // AccountID = SteamID64 - 76561197960265728
+      const accountId = BigInt(steamId64) - BigInt("76561197960265728");
+      const miniprofileUrl = `https://steamcommunity.com/miniprofile/${accountId}/json`;
+      
+      console.log("Fetching miniprofile from:", miniprofileUrl);
+      
+      const response = await fetch(miniprofileUrl, {
+        headers: {
+          "Accept": "application/json",
+          "User-Agent": "Mozilla/5.0 (compatible)"
+        }
+      });
+      
+      if (!response.ok) {
+        console.warn("Miniprofile request failed:", response.status);
+        return null;
+      }
+      
+      const data = await response.json() as MiniprofileResponse;
+      console.log("Miniprofile data:", data);
+      
+      // Parse member since from badge description
+      // Format: "Member since 16 February, 2015."
+      let memberSince: Date | null = null;
+      if (data.favorite_badge?.description) {
+        const match = data.favorite_badge.description.match(/Member since\s+(\d+\s+\w+,\s+\d{4})/i);
+        if (match && match[1]) {
+          try {
+            memberSince = new Date(match[1]);
+            if (isNaN(memberSince.getTime())) {
+              memberSince = null;
+            }
+          } catch {
+            memberSince = null;
+          }
+        }
+      }
+      
+      return {
+        avatarUrl: data.avatar_url ?? null,
+        memberSince
+      };
+    } catch (err) {
+      console.warn("Failed to fetch miniprofile:", err);
+      return null;
+    }
   }
 
   private resolvePersonaName(): Promise<string | null> {
@@ -417,6 +536,20 @@ type GlobalOffensiveWithSchema = GlobalOffensive & {
   getItemSchema?: (
     callback: (err: Error | null, schema: CsgItemSchema) => void
   ) => void;
+};
+
+type MiniprofileResponse = {
+  level?: number;
+  level_class?: string;
+  avatar_url?: string;
+  persona_name?: string;
+  favorite_badge?: {
+    name?: string;
+    xp?: string;
+    level?: number;
+    description?: string;
+    icon?: string;
+  };
 };
 
 export type SteamInventoryItem = {
