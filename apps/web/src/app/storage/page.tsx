@@ -8,27 +8,41 @@ import PageContainer from "@/components/layout/PageContainer";
 import Sidebar from "@/components/layout/Sidebar";
 import Toolbar from "@/components/ui/Toolbar";
 import TableContainer from "@/components/ui/TableContainer";
+import InventoryTable from "@/components/inventory/InventoryTable";
 import { cn } from "@/lib/utils";
 import { useInventoryStore } from "@/store/inventory.store";
 import { useSteamAccountsStore } from "@/store/steamAccounts.store";
+import { useStorageStore } from "@/store/storage.store";
 import storageUnitImage from "@/assets/images/unit-storage.png";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 export default function StoragePage() {
   const activeAccountId = useSteamAccountsStore((state) => state.activeAccountId);
-  const { items, loading, loadInventory, isHydrated } = useInventoryStore();
+  const { items: inventoryItems, loading: inventoryLoading, loadInventory, isHydrated: inventoryHydrated } = useInventoryStore();
+  const {
+    activeStorageId,
+    setActiveStorage,
+    itemsByStorageId,
+    loading: storageLoading,
+    error: storageError,
+    loadStorageItems,
+    isHydrated: storageHydrated
+  } = useStorageStore();
+
   const [collapsed, setCollapsed] = useState(false);
-  const [activeStorageId, setActiveStorageId] = useState<string | null>(null);
   const [storageSearch, setStorageSearch] = useState("");
+  const [itemSearch, setItemSearch] = useState("");
+  const debouncedItemSearch = useDebouncedValue(itemSearch, itemSearch ? 300 : 0);
 
   // Filter only storage units from inventory
   const storageUnits = useMemo(() => {
-    return items.filter((item) => {
+    return inventoryItems.filter((item) => {
       const isStorageUnit =
         item.marketHashName.startsWith("Storage Unit") ||
         item.schema?.name?.startsWith("Storage Unit");
       return isStorageUnit;
     });
-  }, [items]);
+  }, [inventoryItems]);
 
   // Filter storage units by search
   const filteredStorageUnits = useMemo(() => {
@@ -45,13 +59,39 @@ export default function StoragePage() {
   // Auto-select first storage when loaded
   useEffect(() => {
     if (storageUnits.length > 0 && !activeStorageId) {
-      setActiveStorageId(storageUnits[0].id);
+      setActiveStorage(storageUnits[0].id);
     }
-  }, [storageUnits, activeStorageId]);
+  }, [storageUnits, activeStorageId, setActiveStorage]);
 
+  // Get current storage unit info
   const activeStorage = useMemo(() => {
     return storageUnits.find((s) => s.id === activeStorageId) ?? null;
   }, [storageUnits, activeStorageId]);
+
+  // Get items for active storage
+  const storageItemsCache = activeStorageId ? itemsByStorageId[activeStorageId] : null;
+  const storageItems = storageItemsCache?.items ?? [];
+
+  // Filter items by search
+  const filteredStorageItems = useMemo(() => {
+    if (!debouncedItemSearch.trim()) {
+      return storageItems;
+    }
+    const tokens = debouncedItemSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    return storageItems.filter((item) => {
+      const searchText = [
+        item.schema?.name ?? item.marketHashName,
+        item.marketHashName,
+        item.schema?.rarity,
+        item.schema?.weapon,
+        item.schema?.collection
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(" ")
+        .toLowerCase();
+      return tokens.every((token) => searchText.includes(token));
+    });
+  }, [storageItems, debouncedItemSearch]);
 
   const { accounts, loadAccounts } = useSteamAccountsStore();
 
@@ -62,17 +102,28 @@ export default function StoragePage() {
     }
   }, [activeAccountId, accounts.length, loadAccounts]);
 
+  // Load inventory to get list of storage units
   useEffect(() => {
     if (activeAccountId) {
       void loadInventory(activeAccountId);
     }
   }, [loadInventory, activeAccountId]);
 
+  // Load storage items when active storage changes
+  useEffect(() => {
+    if (activeStorageId) {
+      void loadStorageItems(activeStorageId);
+    }
+  }, [activeStorageId, loadStorageItems]);
+
   // Extract storage name from marketHashName (e.g., "Storage Unit | My Storage" -> "My Storage")
   const getStorageName = (marketHashName: string) => {
     const parts = marketHashName.split(" | ");
     return parts.length > 1 ? parts[1] : marketHashName;
   };
+
+  const isLoading = inventoryLoading || storageLoading;
+  const isHydrated = inventoryHydrated && storageHydrated;
 
   return (
     <PageContainer className="px-0">
@@ -88,11 +139,11 @@ export default function StoragePage() {
           )}
         >
           <AppHeader />
-          <div className="px-8 pb-8">
+          <div className="mt-6 px-8 pb-8">
             {/* Two-column layout: storage list on left, content on right */}
-            <div className="mt-6 grid items-start gap-6 lg:grid-cols-[280px_1fr]">
-              {/* Left: Storage Units List */}
-              <div className="flex flex-col gap-3">
+            <div className="grid items-start gap-6 lg:grid-cols-[280px_1fr]">
+              {/* Left: Storage Units List - sticky sidebar */}
+              <div className="sticky top-20 z-20 flex flex-col gap-3 max-h-[calc(100vh-6rem)] self-start bg-background/95 py-2 backdrop-blur-sm">
                 {/* Storage search - matching main toolbar styling */}
                 <div className="flex items-center rounded-2xl border border-border/50 bg-card px-4 py-3">
                   <input
@@ -103,8 +154,8 @@ export default function StoragePage() {
                     className="w-full h-10 rounded-xl border border-border/60 bg-background/70 px-3 text-sm placeholder:text-muted-foreground focus:border-primary/80 focus:outline-none"
                   />
                 </div>
-                <div className="flex flex-col gap-2 max-h-[calc(100vh-220px)] overflow-y-auto pr-2">
-                  {loading || !isHydrated ? (
+                <div className="flex flex-col gap-2 overflow-y-auto flex-1">
+                  {inventoryLoading || !inventoryHydrated ? (
                     <div className="rounded-xl border border-border/40 bg-card px-4 py-3 text-sm text-muted-foreground animate-pulse">
                       Loading...
                     </div>
@@ -116,6 +167,8 @@ export default function StoragePage() {
                     filteredStorageUnits.map((storage) => {
                       const isActive = storage.id === activeStorageId;
                       const storageName = getStorageName(storage.marketHashName);
+                      const cachedItems = itemsByStorageId[storage.id];
+                      const itemCount = cachedItems?.items.length;
 
                       return (
                         <button
@@ -126,7 +179,7 @@ export default function StoragePage() {
                               ? "border-primary bg-primary/10 text-foreground shadow-sm"
                               : "border-border/40 bg-card text-muted-foreground hover:border-border/70 hover:bg-card/80"
                           )}
-                          onClick={() => setActiveStorageId(storage.id)}
+                          onClick={() => setActiveStorage(storage.id)}
                           type="button"
                         >
                           <Image
@@ -141,7 +194,7 @@ export default function StoragePage() {
                               {storageName}
                             </span>
                             <span className="text-xs text-muted-foreground/80">
-                              ID: {storage.id.slice(0, 8)}...
+                              {itemCount !== undefined ? `${itemCount} items` : "Click to load"}
                             </span>
                           </div>
                         </button>
@@ -153,33 +206,50 @@ export default function StoragePage() {
 
               {/* Right: Content Area (Toolbar + Items) */}
               <div className="flex flex-col">
-                <Toolbar
+                <div className="sticky top-20 z-20 bg-background/95 py-2 backdrop-blur-sm">
+                  <Toolbar
                   showSearch
                   searchPlaceholder="Search items in storage..."
+                  searchValue={itemSearch}
+                  onSearchChange={setItemSearch}
                   showRefresh
                   refreshLabel="Refresh"
-                  refreshing={loading}
-                  onRefreshClick={() => loadInventory(activeAccountId, true)}
+                  refreshing={storageLoading}
+                  onRefreshClick={() => activeStorageId && loadStorageItems(activeStorageId, true)}
                   showFilter={false}
                   showSort={false}
                   showViewToggle={false}
-                  showStats={false}
+                  showStats
+                  itemCount={filteredStorageItems.length}
+                  totalValue={filteredStorageItems.reduce((sum, item) => sum + (item.price ?? 0), 0)}
                 />
+                </div>
                 <TableContainer className="mt-4 flex-1">
                   {!activeStorage ? (
                     <div className="px-6 py-12 text-center text-sm text-muted-foreground">
                       Select a storage unit to view its contents
                     </div>
-                  ) : (
+                  ) : storageLoading && storageItems.length === 0 ? (
+                    <div className="px-6 py-12 text-center text-sm text-muted-foreground animate-pulse">
+                      Loading storage contents...
+                    </div>
+                  ) : storageError ? (
+                    <div className="px-6 py-12 text-center text-sm text-destructive">
+                      {storageError}
+                    </div>
+                  ) : storageItems.length === 0 ? (
                     <div className="px-6 py-12 text-center text-sm text-muted-foreground">
                       <p className="font-semibold text-foreground mb-2">
                         {getStorageName(activeStorage.marketHashName)}
                       </p>
-                      <p>Storage contents will be displayed here</p>
-                      <p className="mt-2 text-xs opacity-70">
-                        (Coming soon)
-                      </p>
+                      <p>This storage unit is empty</p>
                     </div>
+                  ) : (
+                    <InventoryTable
+                      items={filteredStorageItems}
+                      viewMode="grid"
+                      emptyMessage={debouncedItemSearch ? "No items match your search" : "Storage is empty"}
+                    />
                   )}
                 </TableContainer>
               </div>

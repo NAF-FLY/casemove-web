@@ -395,8 +395,10 @@ function resolveItemType(
 }
 
 
+// Exported for use in storage module
+export type { ItemSchemaLookup };
 
-function mapSteamItemToDTO(
+export function mapSteamItemToDTO(
   rawItem: SteamInventoryItem,
   schemaLookup: ItemSchemaLookup
 ): InventoryItemDTO {

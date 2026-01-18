@@ -194,9 +194,56 @@ export class SteamClient implements ISteamClient {
     throw new Error("Not implemented");
   }
 
-  async getStorageItems(_: string): Promise<SteamInventoryItem[]> {
-    throw new Error("Not implemented");
+  async getStorageItems(storageId: string): Promise<SteamInventoryItem[]> {
+    if (!this.gcReady || !this.gc) {
+      throw new Error("Steam GC not ready");
+    }
+
+    return new Promise((resolve, reject) => {
+      const items: SteamInventoryItem[] = [];
+      const timeoutMs = 30000; // 30 seconds timeout for large storages
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const handleItemAcquired = (item: any) => {
+        if (item.casket_id === storageId) {
+          items.push(item as SteamInventoryItem);
+        }
+      };
+      
+      const cleanup = () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gc as any).removeListener("itemAcquired", handleItemAcquired);
+      };
+      
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        // Return whatever we collected so far
+        console.log(`[Storage] Timeout reached for storage ${storageId}, returning ${items.length} items`);
+        resolve(items);
+      }, timeoutMs);
+      
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (this.gc as any).on("itemAcquired", handleItemAcquired);
+
+      
+      // getCasketContents triggers itemAcquired events for each item
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (this.gc as any).getCasketContents(storageId, (err: Error | null) => {
+        clearTimeout(timeoutId);
+        cleanup();
+        
+        if (err) {
+          console.error(`[Storage] Error fetching contents for ${storageId}:`, err);
+          reject(err);
+          return;
+        }
+        
+        console.log(`[Storage] Loaded ${items.length} items from storage ${storageId}`);
+        resolve(items);
+      });
+    });
   }
+
 
   async moveItems(_: MoveItemsPayload): Promise<void> {
     throw new Error("Not implemented");

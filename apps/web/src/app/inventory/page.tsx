@@ -100,7 +100,8 @@ export default function InventoryPage() {
         >
           <AppHeader />
           <div className="mt-6 px-8 pb-8">
-            <Toolbar
+            <div className="sticky top-20 z-20 -mx-8 bg-background/95 px-8 py-2 backdrop-blur-sm">
+              <Toolbar
               searchPlaceholder="Search items by name, type, or rarity..."
               searchValue={searchQuery}
               onSearchChange={setSearchQuery}
@@ -120,6 +121,7 @@ export default function InventoryPage() {
               onToggleGrouping={toggleGrouped}
               groupingLabel="Группировать"
             />
+            </div>
             {error ? (
               <p className="mt-4 text-sm text-destructive">{error}</p>
             ) : null}

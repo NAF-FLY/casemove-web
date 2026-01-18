@@ -1,70 +1,100 @@
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+import type { StateStorage } from "zustand/middleware";
+import { get, set, del } from "idb-keyval";
 
-import type { InventoryItemDTO, StorageUnitDTO } from "@casemove/shared-types";
-import {
-  fetchStorageItems,
-  fetchStorages
-} from "@/lib/api-client/storage";
+import type { InventoryItemDTO } from "@casemove/shared-types";
 
-type StorageState = {
-  storages: StorageUnitDTO[];
-  activeStorageId: string | null;
-  itemsByStorageId: Record<string, InventoryItemDTO[]>;
-  loading: boolean;
-  error: string | null;
-  setActiveStorage: (id: string) => void;
-  loadStorages: () => Promise<void>;
-  loadStorageItems: (id: string) => Promise<void>;
+import { fetchStorageItems } from "@/lib/api-client/storage";
+
+// Custom storage adapter for IndexedDB (same as inventory.store.ts)
+const storage: StateStorage = {
+  getItem: async (name: string): Promise<string | null> => {
+    return (await get(name)) || null;
+  },
+  setItem: async (name: string, value: string): Promise<void> => {
+    await set(name, value);
+  },
+  removeItem: async (name: string): Promise<void> => {
+    await del(name);
+  },
 };
 
-export const useStorageStore = create<StorageState>((set, get) => ({
-  storages: [],
-  activeStorageId: null,
-  itemsByStorageId: {},
-  loading: false,
-  error: null,
-  setActiveStorage: (id) => set({ activeStorageId: id }),
-  loadStorages: async () => {
-    set({ loading: true, error: null });
+type StorageItemsCache = {
+  items: InventoryItemDTO[];
+  lastUpdated: number;
+};
 
-    try {
-      const storages = await fetchStorages();
-      const currentActive = get().activeStorageId;
+type StorageState = {
+  activeStorageId: string | null;
+  itemsByStorageId: Record<string, StorageItemsCache>;
+  loading: boolean;
+  error: string | null;
+  isHydrated: boolean;
+  setActiveStorage: (id: string) => void;
+  loadStorageItems: (id: string, force?: boolean) => Promise<void>;
+  invalidateStorage: (id: string) => void;
+};
 
-      set({
-        storages,
-        activeStorageId:
-          currentActive ?? (storages.length > 0 ? storages[0].id : null),
-        loading: false
-      });
-    } catch (error) {
-      set({
-        loading: false,
-        error: error instanceof Error ? error.message : "Unknown error"
-      });
+const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes (storage items rarely change)
+
+export const useStorageStore = create<StorageState>()(
+  persist(
+    (set, get) => ({
+      activeStorageId: null,
+      itemsByStorageId: {},
+      loading: false,
+      error: null,
+      isHydrated: false,
+      setActiveStorage: (id) => set({ activeStorageId: id }),
+      loadStorageItems: async (id, force = false) => {
+        const { itemsByStorageId, loading } = get();
+        const now = Date.now();
+        const cached = itemsByStorageId[id];
+
+        // Check cache validity
+        if (!force && !loading && cached && now - cached.lastUpdated < CACHE_DURATION) {
+          return;
+        }
+
+        set({ loading: true, error: null });
+
+        try {
+          const items = await fetchStorageItems(id);
+
+          set({
+            itemsByStorageId: {
+              ...get().itemsByStorageId,
+              [id]: { items, lastUpdated: Date.now() }
+            },
+            loading: false
+          });
+        } catch (error) {
+          set({
+            loading: false,
+            error: error instanceof Error ? error.message : "Failed to load storage items"
+          });
+        }
+      },
+      invalidateStorage: (id) => {
+        const { itemsByStorageId } = get();
+        const newCache = { ...itemsByStorageId };
+        delete newCache[id];
+        set({ itemsByStorageId: newCache });
+      }
+    }),
+    {
+      name: "storage-items-cache",
+      storage: createJSONStorage(() => storage),
+      partialize: (state) => ({
+        itemsByStorageId: state.itemsByStorageId,
+        activeStorageId: state.activeStorageId
+      }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          useStorageStore.setState({ isHydrated: true });
+        }
+      }
     }
-  },
-  loadStorageItems: async (id) => {
-    const { itemsByStorageId } = get();
-
-    if (itemsByStorageId[id]) {
-      return;
-    }
-
-    set({ loading: true, error: null });
-
-    try {
-      const items = await fetchStorageItems(id);
-
-      set({
-        itemsByStorageId: { ...itemsByStorageId, [id]: items },
-        loading: false
-      });
-    } catch (error) {
-      set({
-        loading: false,
-        error: error instanceof Error ? error.message : "Unknown error"
-      });
-    }
-  }
-}));
+  )
+);
