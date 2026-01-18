@@ -62,6 +62,16 @@ export const useStorageStore = create<StorageState>()(
         try {
           const items = await fetchStorageItems(id);
 
+          // Protect against overwriting valid cache with empty API response
+          // This can happen when Steam GC temporarily fails to return data
+          // Always protect, even on manual refresh - Steam GC can fail anytime
+          const existingCache = get().itemsByStorageId[id];
+          if (items.length === 0 && existingCache && existingCache.items.length > 0) {
+            console.warn(`[StorageStore] API returned empty for storage ${id}, keeping ${existingCache.items.length} cached items`);
+            set({ loading: false, error: "Steam returned empty response, showing cached data" });
+            return;
+          }
+
           set({
             itemsByStorageId: {
               ...get().itemsByStorageId,

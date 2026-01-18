@@ -224,7 +224,7 @@ export default function StoragePage() {
                   totalValue={filteredStorageItems.reduce((sum, item) => sum + (item.price ?? 0), 0)}
                 />
                 </div>
-                <TableContainer className="mt-4 flex-1">
+                <TableContainer>
                   {!activeStorage ? (
                     <div className="px-6 py-12 text-center text-sm text-muted-foreground">
                       Select a storage unit to view its contents
