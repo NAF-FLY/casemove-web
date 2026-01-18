@@ -1,39 +1,79 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import InventoryTable from "@/components/inventory/InventoryTable";
 import AppHeader from "@/components/layout/AppHeader";
 import PageContainer from "@/components/layout/PageContainer";
 import Sidebar from "@/components/layout/Sidebar";
-import StorageSidebar from "@/components/storage/StorageSidebar";
-import StorageItemsTable from "@/components/storage/StorageItemsTable";
-import { Button } from "@/components/ui/button";
-import TableContainer from "@/components/ui/TableContainer";
+import Toolbar from "@/components/ui/Toolbar";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { cn } from "@/lib/utils";
-import { useStorageStore } from "@/store/storage.store";
+import { useInventoryStore } from "@/store/inventory.store";
+import { useSteamAccountsStore } from "@/store/steamAccounts.store";
 
 export default function StoragePage() {
-  const storages = useStorageStore((state) => state.storages);
-  const activeStorageId = useStorageStore((state) => state.activeStorageId);
-  const itemsByStorageId = useStorageStore((state) => state.itemsByStorageId);
-  const loading = useStorageStore((state) => state.loading);
-  const loadStorages = useStorageStore((state) => state.loadStorages);
-  const loadStorageItems = useStorageStore((state) => state.loadStorageItems);
-  const setActiveStorage = useStorageStore((state) => state.setActiveStorage);
+  const activeAccountId = useSteamAccountsStore((state) => state.activeAccountId);
+  const { items, loading, loadInventory, isHydrated } = useInventoryStore();
   const [collapsed, setCollapsed] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const activeItems = activeStorageId
-    ? itemsByStorageId[activeStorageId]
-    : undefined;
-  const isItemsLoading = Boolean(
-    loading && activeStorageId && !activeItems
+  const debouncedQuery = useDebouncedValue(
+    searchQuery,
+    searchQuery ? 300 : 0
   );
+  const normalizedSearch = debouncedQuery.trim().toLowerCase();
+
+  // Filter only storage units from inventory
+  const storageUnits = useMemo(() => {
+    return items.filter((item) => {
+      const isStorageUnit =
+        item.marketHashName.startsWith("Storage Unit") ||
+        item.schema?.name?.startsWith("Storage Unit");
+      return isStorageUnit;
+    });
+  }, [items]);
+
+  // Apply search filter
+  const filteredStorages = useMemo(() => {
+    if (!normalizedSearch) {
+      return storageUnits;
+    }
+
+    const tokens = normalizedSearch.split(/\s+/).filter(Boolean);
+
+    return storageUnits.filter((item) => {
+      const searchText = [
+        item.schema?.name ?? item.marketHashName,
+        item.marketHashName
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(" ")
+        .toLowerCase();
+
+      return tokens.every((token) => searchText.includes(token));
+    });
+  }, [storageUnits, normalizedSearch]);
+
+  const emptyMessage = normalizedSearch
+    ? "No storage units match your search."
+    : "No storage units found in inventory.";
+
+  const { accounts, loadAccounts } = useSteamAccountsStore();
+
+  // Ensure accounts are loaded (restore session if page refreshed)
+  useEffect(() => {
+    if (!activeAccountId && accounts.length === 0) {
+      void loadAccounts();
+    }
+  }, [activeAccountId, accounts.length, loadAccounts]);
 
   useEffect(() => {
-    if (activeStorageId) {
-      void loadStorageItems(activeStorageId);
+    if (activeAccountId) {
+      void loadInventory(activeAccountId);
     }
-  }, [activeStorageId, loadStorageItems]);
+  }, [loadInventory, activeAccountId]);
 
   return (
     <PageContainer className="px-0">
@@ -49,38 +89,34 @@ export default function StoragePage() {
           )}
         >
           <AppHeader />
-          <div className="px-8">
-            <div className="mt-6 flex justify-end">
-              <Button
-                onClick={() => {
-                  void loadStorages();
-                }}
-                type="button"
-                variant="outline"
-              >
-                Load storages
-              </Button>
-            </div>
-            <div className="mt-6 grid gap-6 lg:grid-cols-[260px_1fr]">
-              <StorageSidebar
-                activeStorageId={activeStorageId}
-                onSelect={setActiveStorage}
-                storages={storages}
+          <div className="px-8 pb-8">
+            <Toolbar
+              searchPlaceholder="Search storage units..."
+              searchValue={searchQuery}
+              onSearchChange={setSearchQuery}
+              showRefresh
+              refreshLabel="Refresh"
+              refreshing={loading}
+              onRefreshClick={() => loadInventory(activeAccountId, true)}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              showFilter
+              filterLabel="Filter"
+              showSort
+              sortLabel="Sort"
+            />
+            {loading || !isHydrated ? (
+              <p className="mt-4 text-sm text-muted-foreground bg-secondary/50 p-4 rounded-lg animate-pulse">
+                Loading storage units...
+              </p>
+            ) : (
+              <InventoryTable
+                items={filteredStorages}
+                loading={loading}
+                viewMode={viewMode}
+                emptyMessage={emptyMessage}
               />
-              <div>
-                {storages.length === 0 ? (
-                  <TableContainer className="border border-border/40 bg-card px-4 py-6 text-sm text-muted-foreground">
-                    No storage units
-                  </TableContainer>
-                ) : isItemsLoading ? (
-                  <TableContainer className="border border-border/40 bg-card px-4 py-6 text-sm text-muted-foreground">
-                    Loading...
-                  </TableContainer>
-                ) : (
-                  <StorageItemsTable items={activeItems ?? []} />
-                )}
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

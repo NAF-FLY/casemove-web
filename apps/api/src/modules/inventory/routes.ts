@@ -7,7 +7,7 @@ import { getInventory } from "./service";
 
 // Store last force refresh time per user to enforce 5-minute cooldown
 const lastForceRefreshMap = new Map<string, number>();
-const FORCE_REFRESH_COOLDOWN = 15 * 1000; // 5 minutes
+const FORCE_REFRESH_COOLDOWN = 5 * 60 * 1000; // 5 minutes
 
 export async function registerInventoryRoutes(app: FastifyInstance) {
   app.get("/inventory", async (request, reply) => {
