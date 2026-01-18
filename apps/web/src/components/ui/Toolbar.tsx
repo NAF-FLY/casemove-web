@@ -35,6 +35,14 @@ type ToolbarProps = {
   isGrouped?: boolean;
   onToggleGrouping?: (value: boolean) => void;
   groupingLabel?: string;
+  // Stats display
+  showStats?: boolean;
+  itemCount?: number;
+  totalValue?: number;
+  valueCurrency?: string;
+  // Selected items stats
+  selectedCount?: number;
+  selectedValue?: number;
 };
 
 export default function Toolbar({
@@ -61,8 +69,28 @@ export default function Toolbar({
   showGrouping = false,
   isGrouped = false,
   onToggleGrouping,
-  groupingLabel = "Group items"
+  groupingLabel = "Group items",
+  showStats = false,
+  itemCount,
+  totalValue,
+  valueCurrency = "USD",
+  selectedCount,
+  selectedValue
 }: ToolbarProps) {
+  const formattedValue = totalValue != null
+    ? new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: valueCurrency,
+        minimumFractionDigits: 2
+      }).format(totalValue)
+    : null;
+  const formattedSelectedValue = selectedValue != null
+    ? new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: valueCurrency,
+        minimumFractionDigits: 2
+      }).format(selectedValue)
+    : null;
   const hasSearch = showSearch;
   const isSearchControlled = typeof searchValue === "string";
   const isViewControlled = typeof viewMode === "string";
@@ -90,7 +118,7 @@ export default function Toolbar({
   return (
     <div
       className={cn(
-        "mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-border/50 bg-card px-4 py-3",
+        "flex flex-wrap items-center gap-3 rounded-2xl border border-border/50 bg-card px-4 py-3",
         !hasSearch && "justify-end",
         className
       )}
@@ -117,6 +145,38 @@ export default function Toolbar({
           isReadOnly={isSearchControlled && !onSearchChange}
           onValueChange={onSearchChange}
         />
+      ) : null}
+      {showStats ? (
+        <div className="flex items-center gap-4 rounded-xl border border-border/40 bg-background/50 px-4 py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Value:</span>
+            <span className="text-base font-semibold text-primary">
+              {formattedValue ?? "—"}
+            </span>
+          </div>
+          <div className="h-5 w-px bg-border/50" />
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Items:</span>
+            <span className="text-base font-semibold text-foreground">
+              {itemCount?.toLocaleString() ?? "—"}
+            </span>
+          </div>
+          {(selectedCount != null && selectedCount > 0) ? (
+            <>
+              <div className="h-5 w-px bg-border/50" />
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Selected:</span>
+                <span className="text-base font-semibold text-foreground">
+                  {selectedCount.toLocaleString()}
+                </span>
+                <span className="text-sm text-muted-foreground">•</span>
+                <span className="text-base font-semibold text-primary">
+                  {formattedSelectedValue ?? "—"}
+                </span>
+              </div>
+            </>
+          ) : null}
+        </div>
       ) : null}
       <div className="flex items-center gap-2">
         {showRefresh ? (
@@ -154,14 +214,19 @@ export default function Toolbar({
           </Button>
         ) : null}
         {showGrouping ? (
-          <Switch
-            isSelected={isGrouped}
-            onValueChange={onToggleGrouping}
-            size="sm"
-            color="primary"
-          >
-            {groupingLabel}
-          </Switch>
+          <div className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-background/70 px-4">
+            <Switch
+              isSelected={isGrouped}
+              onValueChange={onToggleGrouping}
+              size="sm"
+              color="primary"
+              classNames={{
+                wrapper: "rounded-md group-data-[selected=true]:bg-primary",
+                thumb: "rounded-sm"
+              }}
+            />
+            <span className="text-sm">{groupingLabel}</span>
+          </div>
         ) : null}
         {showViewToggle ? (
           <Tabs

@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback } from "react";
 import type { InventoryItemDTO } from "@casemove/shared-types";
 
 import TableContainer from "@/components/ui/TableContainer";
@@ -29,6 +30,7 @@ export default function InventoryTable({
 }: InventoryTableProps) {
   const selected = useInventorySelection((state) => state.selected);
   const toggle = useInventorySelection((state) => state.toggle);
+  const toggleGroup = useInventorySelection((state) => state.toggleGroup);
   const storeItems = useInventoryStore((state) => state.items);
   const storeLoading = useInventoryStore((state) => state.loading);
   const storeError = useInventoryStore((state) => state.error);
@@ -38,6 +40,31 @@ export default function InventoryTable({
   const isListView = viewMode === "list";
 
   const displayItems = buildInventoryDisplayItems(tableItems, selected, isGrouped);
+
+  // When grouped, clicking toggles all items with the same marketHashName
+  const handleToggle = useCallback(
+    (id: string) => {
+      if (!isGrouped) {
+        toggle(id);
+        return;
+      }
+
+      // Find the item to get its marketHashName
+      const clickedItem = tableItems.find((item) => item.id === id);
+      if (!clickedItem) {
+        toggle(id);
+        return;
+      }
+
+      // Find all items with the same marketHashName
+      const groupIds = tableItems
+        .filter((item) => item.marketHashName === clickedItem.marketHashName)
+        .map((item) => item.id);
+
+      toggleGroup(groupIds);
+    },
+    [isGrouped, tableItems, toggle, toggleGroup]
+  );
 
   if (!isLoading && !hasError && tableItems.length === 0) {
     return (
@@ -52,9 +79,9 @@ export default function InventoryTable({
   return (
     <TableContainer className="mt-6">
       {isListView ? (
-        <InventoryListView items={displayItems} onToggle={toggle} />
+        <InventoryListView items={displayItems} onToggle={handleToggle} />
       ) : (
-        <InventoryGridView items={displayItems} onToggle={toggle} />
+        <InventoryGridView items={displayItems} onToggle={handleToggle} />
       )}
     </TableContainer>
   );

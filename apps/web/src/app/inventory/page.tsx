@@ -19,7 +19,8 @@ import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 // ... existing imports
 
 export default function InventoryPage() {
-  const selectedCount = useInventorySelection((state) => state.selected.size);
+  const selected = useInventorySelection((state) => state.selected);
+  const selectedCount = selected.size;
   const activeAccountId = useSteamAccountsStore((state) => state.activeAccountId);
   const { items, loading, error, loadInventory, isHydrated, isGrouped, toggleGrouped } = useInventoryStore();
   const [collapsed, setCollapsed] = useState(false);
@@ -57,6 +58,12 @@ export default function InventoryPage() {
     ? "No items match your search."
     : "Inventory is empty or failed to load items.";
 
+  const selectedValue = useMemo(() => {
+    return items
+      .filter((item) => selected.has(item.id))
+      .reduce((sum, item) => sum + (item.price ?? 0), 0);
+  }, [items, selected]);
+
   const { accounts, loadAccounts } = useSteamAccountsStore();
 
   // Ensure accounts are loaded (restore session if page refreshed)
@@ -92,11 +99,16 @@ export default function InventoryPage() {
           )}
         >
           <AppHeader />
-          <div className="px-8 pb-8">
+          <div className="mt-6 px-8 pb-8">
             <Toolbar
               searchPlaceholder="Search items by name, type, or rarity..."
               searchValue={searchQuery}
               onSearchChange={setSearchQuery}
+              showStats
+              itemCount={filteredItems.length}
+              totalValue={filteredItems.reduce((sum, item) => sum + (item.price ?? 0), 0)}
+              selectedCount={selectedCount}
+              selectedValue={selectedValue}
               showRefresh
               refreshLabel="Refresh"
               refreshing={loading}
