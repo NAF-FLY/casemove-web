@@ -17,5 +17,6 @@ export type InventoryItemDTO = {
   paintWear?: number | null;
   price?: number | null;
   priceCurrency?: string | null;
+  storagePrice?: number | null;
   schema?: InventoryItemSchemaDTO | null;
 };

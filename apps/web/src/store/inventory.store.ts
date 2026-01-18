@@ -29,6 +29,7 @@ type InventoryState = {
   isHydrated: boolean;
   isGrouped: boolean;
   setItems: (items: InventoryItemDTO[]) => void;
+  updateItem: (id: string, updates: Partial<InventoryItemDTO>) => void;
   toggleGrouped: () => void;
   loadInventory: (accountId: string | null, force?: boolean) => Promise<void>;
 };
@@ -44,6 +45,9 @@ export const useInventoryStore = create<InventoryState>()(
       isHydrated: false,
       isGrouped: false,
       setItems: (items) => set({ items }),
+      updateItem: (id, updates) => set((state) => ({
+        items: state.items.map((item) => (item.id === id ? { ...item, ...updates } : item))
+      })),
       toggleGrouped: () => set((state) => ({ isGrouped: !state.isGrouped })),
       loadInventory: async (accountId: string | null, force = false) => {
         const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes

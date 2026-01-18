@@ -61,7 +61,10 @@ export default function InventoryPage() {
   const selectedValue = useMemo(() => {
     return items
       .filter((item) => selected.has(item.id))
-      .reduce((sum, item) => sum + (item.price ?? 0), 0);
+      .reduce((sum, item) => {
+        const price = (item.price && item.price > 0) ? item.price : (item.storagePrice ?? 0);
+        return sum + price;
+      }, 0);
   }, [items, selected]);
 
   const { accounts, loadAccounts } = useSteamAccountsStore();
@@ -108,6 +111,7 @@ export default function InventoryPage() {
               showStats
               itemCount={filteredItems.length}
               totalValue={filteredItems.reduce((sum, item) => sum + (item.price ?? 0), 0)}
+              storageValue={filteredItems.reduce((sum, item) => sum + (item.storagePrice ?? 0), 0)}
               selectedCount={selectedCount}
               selectedValue={selectedValue}
               showRefresh

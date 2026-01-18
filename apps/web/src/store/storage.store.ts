@@ -6,6 +6,7 @@ import { get, set, del } from "idb-keyval";
 import type { InventoryItemDTO } from "@casemove/shared-types";
 
 import { fetchStorageItems } from "@/lib/api-client/storage";
+import { useInventoryStore } from "./inventory.store";
 
 // Custom storage adapter for IndexedDB (same as inventory.store.ts)
 const storage: StateStorage = {
@@ -72,10 +73,20 @@ export const useStorageStore = create<StorageState>()(
             return;
           }
 
+          // Update inventory store immediately with the fresh value
+          // @ts-ignore - We know totalValue exists from the API response now, even if types aren't fully updated in all places yet
+          if (items.totalValue !== undefined) {
+             // @ts-ignore
+             const totalValue = items.totalValue as number;
+             useInventoryStore.getState().updateItem(id, { storagePrice: totalValue });
+          }
+          
+          const itemsList = Array.isArray(items) ? items : (items as any).items || [];
+
           set({
             itemsByStorageId: {
               ...get().itemsByStorageId,
-              [id]: { items, lastUpdated: Date.now() }
+              [id]: { items: itemsList, lastUpdated: Date.now() }
             },
             loading: false
           });

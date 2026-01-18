@@ -563,6 +563,7 @@ export type SteamInventoryItem = {
   item_moveable?: boolean | number;
   marketable?: boolean | number;
   tradable?: boolean | number;
+  casket_id?: string;
   flags?: number;
   origin?: number;
   position?: number;

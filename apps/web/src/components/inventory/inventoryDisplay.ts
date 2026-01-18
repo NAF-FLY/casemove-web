@@ -127,12 +127,18 @@ export function buildInventoryDisplayItems(
     const cleanedRarity = getCleanRarity(item.schema?.rarity);
     const displayRarity = cleanedRarity ?? "Unknown";
     const iconUrl = item.schema?.image ?? item.iconUrl;
+    let priceValue = item.price;
+    // Prefer storage price for Storage Units if available
+    if (item.storagePrice && item.storagePrice > 0) {
+      priceValue = item.storagePrice;
+    }
+
     const priceLabel =
-      item.price && typeof item.price === "number"
+      priceValue && typeof priceValue === "number"
         ? new Intl.NumberFormat("en-US", {
             style: "currency",
             currency: item.priceCurrency ?? "USD"
-          }).format(item.price)
+          }).format(priceValue)
         : "—";
     const floatValue = item.paintWear;
     const hasFloat =

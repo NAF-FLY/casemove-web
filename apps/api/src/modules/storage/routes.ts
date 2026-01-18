@@ -6,6 +6,7 @@ import { steamManager } from "../../core/steam-manager";
 import { supabaseAdmin } from "../../core/supabase";
 import { getRefreshToken, saveRefreshToken } from "../steam-accounts/credentials";
 import { mapSteamItemToDTO } from "../inventory/service";
+import { priceService } from "../inventory/price.service";
 
 export async function registerStorageRoutes(app: FastifyInstance) {
   // GET /storage/:id - Get items from a specific storage unit
@@ -91,7 +92,60 @@ export async function registerStorageRoutes(app: FastifyInstance) {
         mapSteamItemToDTO(item, client)
       );
 
-      return { items };
+      // Populate prices
+      const marketHashNames = items
+        .map((d) => d.marketHashName)
+        .filter((n): n is string => !!n);
+      
+      const uniqueNames = Array.from(new Set(marketHashNames));
+      const priceMap = await priceService.getPrices(uniqueNames);
+
+      let totalStorageValue = 0;
+
+      for (const dto of items) {
+        if (dto.marketHashName) {
+          const price = priceMap.get(dto.marketHashName);
+          if (typeof price === 'number') {
+            dto.price = price;
+            dto.priceCurrency = 'USD';
+            totalStorageValue += price;
+          }
+        }
+      }
+
+      // Update storage value in cache (Lazy update)
+      try {
+        // Fetch current inventory cache
+        const { data: cache } = await supabaseAdmin
+          .from("steam_inventory_cache")
+          .select("items")
+          .eq("steam_account_id", steamAccountId)
+          .single();
+
+        if (cache?.items && Array.isArray(cache.items)) {
+          const cachedItems = cache.items as InventoryItemDTO[];
+          const storageItemIndex = cachedItems.findIndex((i) => i.id === storageId);
+
+          if (storageItemIndex !== -1) {
+            // Check if value actually changed to avoid unnecessary writes
+            if (cachedItems[storageItemIndex].storagePrice !== totalStorageValue) {
+               console.log(`[Storage] Updating storage unit ${storageId} value to ${totalStorageValue}`);
+               cachedItems[storageItemIndex].storagePrice = totalStorageValue;
+               
+               // Save back to DB
+               await supabaseAdmin
+                 .from("steam_inventory_cache")
+                 .update({ items: cachedItems as any }) // Type assertion needed for JSONB
+                 .eq("steam_account_id", steamAccountId);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[Storage] Failed to update storage value in cache:", err);
+        // Non-blocking error
+      }
+
+      return { items, totalValue: totalStorageValue };
     } catch (error) {
       console.error("[Storage] Failed to load storage items:", error);
       return reply.code(500).send({ message: "Failed to load storage items" });

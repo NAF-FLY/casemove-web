@@ -39,6 +39,7 @@ type ToolbarProps = {
   showStats?: boolean;
   itemCount?: number;
   totalValue?: number;
+  storageValue?: number;
   valueCurrency?: string;
   // Selected items stats
   selectedCount?: number;
@@ -73,6 +74,7 @@ export default function Toolbar({
   showStats = false,
   itemCount,
   totalValue,
+  storageValue,
   valueCurrency = "USD",
   selectedCount,
   selectedValue
@@ -149,10 +151,23 @@ export default function Toolbar({
       {showStats ? (
         <div className="flex items-center gap-4 rounded-xl border border-border/40 bg-background/50 px-4 py-2">
           <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Value:</span>
+            <span className="text-sm text-muted-foreground">Inv Value:</span>
             <span className="text-base font-semibold text-primary">
               {formattedValue ?? "—"}
             </span>
+            {storageValue != null && storageValue > 0 ? (
+              <>
+                <div className="h-5 w-px bg-border/50 mx-2" />
+                <span className="text-sm text-muted-foreground">Total:</span>
+                <span className="text-base font-semibold text-primary">
+                  {new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: valueCurrency,
+                    minimumFractionDigits: 2
+                  }).format((totalValue ?? 0) + storageValue)}
+                </span>
+              </>
+            ) : null}
           </div>
           <div className="h-5 w-px bg-border/50" />
           <div className="flex items-center gap-2">
@@ -161,7 +176,7 @@ export default function Toolbar({
               {itemCount?.toLocaleString() ?? "—"}
             </span>
           </div>
-          {(selectedCount != null && selectedCount > 0) ? (
+          {/* {(selectedCount != null && selectedCount > 0) ? (
             <>
               <div className="h-5 w-px bg-border/50" />
               <div className="flex items-center gap-2">
@@ -175,7 +190,7 @@ export default function Toolbar({
                 </span>
               </div>
             </>
-          ) : null}
+          ) : null} */}
         </div>
       ) : null}
       <div className="flex items-center gap-2">

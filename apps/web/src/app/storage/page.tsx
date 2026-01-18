@@ -193,9 +193,20 @@ export default function StoragePage() {
                             <span className="text-sm font-semibold truncate">
                               {storageName}
                             </span>
-                            <span className="text-xs text-muted-foreground/80">
-                              {itemCount !== undefined ? `${itemCount} items` : "Click to load"}
-                            </span>
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
+                              <span>{itemCount !== undefined ? `${itemCount} items` : "Click to load"}</span>
+                              {storage.storagePrice !== undefined && storage.storagePrice > 0 && (
+                                <>
+                                  <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/50" />
+                                  <span className="text-primary font-medium">
+                                    {new Intl.NumberFormat("en-US", {
+                                      style: "currency",
+                                      currency: "USD",
+                                    }).format(storage.storagePrice)}
+                                  </span>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </button>
                       );

@@ -101,6 +101,9 @@ function shouldHideItem(item: SteamInventoryItem): boolean {
   if (defIndex === 36) return true;   // C4 / Service item
   if (defIndex === 1348) return true; // Unsealed Graffiti (Not tradable/usable in inventory context)
 
+  // Filter items that are inside a storage unit (casket)
+  if (item.casket_id) return true;
+
   return false;
 }
 
