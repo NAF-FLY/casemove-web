@@ -16,6 +16,7 @@ type InventoryTableProps = {
   error?: string | null;
   viewMode?: "grid" | "list";
   emptyMessage?: string;
+  isGrouped?: boolean;
 };
 
 export default function InventoryTable({
@@ -23,7 +24,8 @@ export default function InventoryTable({
   loading,
   error,
   viewMode = "grid",
-  emptyMessage = "Inventory is empty or failed to load items."
+  emptyMessage = "Inventory is empty or failed to load items.",
+  isGrouped = false
 }: InventoryTableProps) {
   const selected = useInventorySelection((state) => state.selected);
   const toggle = useInventorySelection((state) => state.toggle);
@@ -35,7 +37,7 @@ export default function InventoryTable({
   const hasError = error ?? storeError;
   const isListView = viewMode === "list";
 
-  const displayItems = buildInventoryDisplayItems(tableItems, selected);
+  const displayItems = buildInventoryDisplayItems(tableItems, selected, isGrouped);
 
   if (!isLoading && !hasError && tableItems.length === 0) {
     return (

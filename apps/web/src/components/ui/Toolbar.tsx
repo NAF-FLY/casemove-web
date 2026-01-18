@@ -2,7 +2,7 @@
 
 import { useState, type Key } from "react";
 
-import { Input, Tab, Tabs } from "@heroui/react";
+import { Input, Switch, Tab, Tabs } from "@heroui/react";
 import { ArrowUpDown, Filter, Grid2X2, List, RefreshCw, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,10 @@ type ToolbarProps = {
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
   viewLabel?: string;
+  showGrouping?: boolean;
+  isGrouped?: boolean;
+  onToggleGrouping?: (value: boolean) => void;
+  groupingLabel?: string;
 };
 
 export default function Toolbar({
@@ -53,7 +57,11 @@ export default function Toolbar({
   onViewToggle,
   viewMode,
   onViewModeChange,
-  viewLabel = "Toggle view"
+  viewLabel = "Toggle view",
+  showGrouping = false,
+  isGrouped = false,
+  onToggleGrouping,
+  groupingLabel = "Group items"
 }: ToolbarProps) {
   const hasSearch = showSearch;
   const isSearchControlled = typeof searchValue === "string";
@@ -144,6 +152,16 @@ export default function Toolbar({
             <ArrowUpDown className="h-4 w-4" />
             <span>{sortLabel}</span>
           </Button>
+        ) : null}
+        {showGrouping ? (
+          <Switch
+            isSelected={isGrouped}
+            onValueChange={onToggleGrouping}
+            size="sm"
+            color="primary"
+          >
+            {groupingLabel}
+          </Switch>
         ) : null}
         {showViewToggle ? (
           <Tabs

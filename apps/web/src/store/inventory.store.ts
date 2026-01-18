@@ -27,7 +27,9 @@ type InventoryState = {
   error: string | null;
   lastUpdated: number;
   isHydrated: boolean;
+  isGrouped: boolean;
   setItems: (items: InventoryItemDTO[]) => void;
+  toggleGrouped: () => void;
   loadInventory: (accountId: string | null, force?: boolean) => Promise<void>;
 };
 
@@ -40,7 +42,9 @@ export const useInventoryStore = create<InventoryState>()(
       error: null,
       lastUpdated: 0,
       isHydrated: false,
+      isGrouped: false,
       setItems: (items) => set({ items }),
+      toggleGrouped: () => set((state) => ({ isGrouped: !state.isGrouped })),
       loadInventory: async (accountId: string | null, force = false) => {
         const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
         const now = Date.now();
@@ -81,7 +85,8 @@ export const useInventoryStore = create<InventoryState>()(
       partialize: (state) => ({ 
         items: state.items, 
         accountId: state.accountId, 
-        lastUpdated: state.lastUpdated 
+        lastUpdated: state.lastUpdated,
+        isGrouped: state.isGrouped
       }), // only persist these fields
       onRehydrateStorage: () => (state) => {
         state?.setItems(state.items); // Force re-render if needed

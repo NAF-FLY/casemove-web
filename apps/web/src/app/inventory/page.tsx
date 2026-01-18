@@ -21,7 +21,7 @@ import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 export default function InventoryPage() {
   const selectedCount = useInventorySelection((state) => state.selected.size);
   const activeAccountId = useSteamAccountsStore((state) => state.activeAccountId);
-  const { items, loading, error, loadInventory, isHydrated } = useInventoryStore();
+  const { items, loading, error, loadInventory, isHydrated, isGrouped, toggleGrouped } = useInventoryStore();
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
@@ -103,6 +103,10 @@ export default function InventoryPage() {
               onRefreshClick={() => loadInventory(activeAccountId, true)}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
+              showGrouping
+              isGrouped={isGrouped}
+              onToggleGrouping={toggleGrouped}
+              groupingLabel="Группировать"
             />
             {error ? (
               <p className="mt-4 text-sm text-destructive">{error}</p>
@@ -118,6 +122,7 @@ export default function InventoryPage() {
                 loading={loading}
                 viewMode={viewMode}
                 emptyMessage={emptyMessage}
+                isGrouped={isGrouped}
               />
             )}
           </div>

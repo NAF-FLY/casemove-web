@@ -120,8 +120,13 @@ export default function InventoryGridView({
               </div>
             </div>
             <div className="flex flex-1 flex-col gap-2 px-3 py-3">
-              <div className="truncate text-sm font-semibold text-foreground">
-                {displayName}
+              <div className="flex items-center justify-between text-sm font-semibold text-foreground">
+                <span className="truncate">{displayName}</span>
+                {displayItem.count && displayItem.count > 1 ? (
+                  <span className="ml-2 shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-xs text-primary">
+                    x{displayItem.count}
+                  </span>
+                ) : null}
               </div>
               <div className="text-xs text-muted-foreground">
                 {condition ?? "Condition unknown"}

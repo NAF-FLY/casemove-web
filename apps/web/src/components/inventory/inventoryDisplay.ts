@@ -18,6 +18,7 @@ export type InventoryDisplayItem = {
   selectedItem: boolean;
   rarityAppearance: RarityAppearance;
   hasFloat: boolean;
+  count?: number;
 };
 
 function getRarityAppearance(rarity: string | null | undefined): RarityAppearance {
@@ -117,9 +118,10 @@ function getCleanRarity(rarity: string | null | undefined) {
 
 export function buildInventoryDisplayItems(
   items: InventoryItemDTO[],
-  selected: Set<string>
+  selected: Set<string>,
+  isGrouped: boolean = false
 ): InventoryDisplayItem[] {
-  return items.map((item) => {
+  const displayItems = items.map((item) => {
     const { name, condition } = getNameAndCondition(item.marketHashName);
     const displayName = item.schema?.name ?? name;
     const cleanedRarity = getCleanRarity(item.schema?.rarity);
@@ -151,7 +153,36 @@ export function buildInventoryDisplayItems(
       fullFloatLabel,
       selectedItem,
       rarityAppearance,
-      hasFloat
+      hasFloat,
+      count: 1
     };
   });
+
+  if (!isGrouped) {
+    return displayItems;
+  }
+
+  const groupedMap = new Map<string, InventoryDisplayItem>();
+
+  for (const displayItem of displayItems) {
+    const key = displayItem.item.marketHashName;
+    const existing = groupedMap.get(key);
+
+    if (existing) {
+      existing.count = (existing.count ?? 0) + 1;
+      // If any item in the group is selected, consider the group selected?
+      // Or just track selection of the representative?
+      // Current logic: representative selection state is what matters.
+      // But if we want enabling selection to work properly, we might need a derived selection state.
+      // For now, let's just stick to simple grouping.
+      // Maybe simpler: if the incoming item is selected, mark the group as selected.
+      if (displayItem.selectedItem) {
+        existing.selectedItem = true;
+      }
+    } else {
+      groupedMap.set(key, { ...displayItem });
+    }
+  }
+
+  return Array.from(groupedMap.values());
 }
