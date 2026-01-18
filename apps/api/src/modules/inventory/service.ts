@@ -401,6 +401,7 @@ function mapSteamItemToDTO(
   schemaLookup: ItemSchemaLookup
 ): InventoryItemDTO {
   const defIndex = rawItem.def_index;
+
   const paintWear = getPaintWear(rawItem);
   const wearName = getWearName(paintWear ?? undefined);
   const hasPaintWear = paintWear !== null && Number.isFinite(paintWear);
@@ -486,7 +487,11 @@ function mapSteamItemToDTO(
 
   // 3. Construct DTO
   let marketHashName: string;
-  if (baseItem) {
+  
+  // Special case: Storage Units (def_index 1201) should prioritize custom_name
+  if (defIndex === 1201 && rawItem.custom_name) {
+    marketHashName = `Storage Unit | ${rawItem.custom_name}`;
+  } else if (baseItem) {
     // If it's a skin with wear, append the wear
     if (hasPaintWear && wearName && baseItem.id.startsWith('skin-')) {
        // Ideally baseItem name for skins shouldn't have wear, but let's be safe
@@ -495,6 +500,8 @@ function mapSteamItemToDTO(
     } else {
        marketHashName = baseItem.name;
     }
+  } else if (rawItem.custom_name) {
+    marketHashName = rawItem.custom_name;
   } else if (rawName) {
     marketHashName = rawName;
   } else if (schemaName) {

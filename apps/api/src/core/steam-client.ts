@@ -509,6 +509,7 @@ export type SteamInventoryItem = {
   paint_wear?: number;
   market_hash_name?: string;
   name?: string;
+  custom_name?: string;
   type?: string;
   icon_url?: string;
   icon?: string;
