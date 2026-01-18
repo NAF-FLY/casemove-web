@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { getSchemaItemPriority, matchesTypeHint } from "./schema-helpers";
+
 
 export type SkinSchemaRarity = {
   id: string;
@@ -58,129 +58,240 @@ export type SkinSchema = {
 export class SkinSchemaService {
   private itemsByName = new Map<string, SkinSchema>();
   private itemsByDefIndex = new Map<string, SkinSchema>();
-  private itemsByDefIndexList = new Map<string, SkinSchema[]>();
   private itemsByPaintIndex = new Map<string, SkinSchema[]>();
-  private itemsByOriginalItemName = new Map<string, SkinSchema[]>();
-  private itemsByOriginalLocName = new Map<string, SkinSchema[]>();
-  private itemsByOriginalName = new Map<string, SkinSchema[]>();
+  private highlightsByDefIndex = new Map<string, SkinSchema>();
+  private slabsByDefIndex = new Map<string, SkinSchema>();
+  private toolsByDefIndex = new Map<string, SkinSchema>();
+  private stickersByDefIndex = new Map<string, SkinSchema>();
+  private keychainsByDefIndex = new Map<string, SkinSchema>();
+  private musicKitsByDefIndex = new Map<string, SkinSchema>();
+  private agentsByDefIndex = new Map<string, SkinSchema>();
+  private cratesByDefIndex = new Map<string, SkinSchema>();
+  private patchesByDefIndex = new Map<string, SkinSchema>();
+  private collectiblesByDefIndex = new Map<string, SkinSchema>();
+  private graffitiByDefIndex = new Map<string, SkinSchema>();
+  private skinsByDefIndex = new Map<string, SkinSchema>();
 
   async init(): Promise<void> {
-    const filePath = path.join(
-      __dirname,
-      "..",
-      "..",
-      "data",
-      "items",
-      "items.json"
-    );
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const items = JSON.parse(raw) as Record<string, SkinSchema>;
+    const dataDir = path.join(__dirname, "..", "..", "data", "items");
+    
+    // 1. Agents
+    this.loadSpecificMap("agents.json", this.agentsByDefIndex, dataDir);
 
-    Object.values(items).forEach((item) => {
-      this.itemsByName.set(item.name, item);
-      if (item.market_hash_name && item.market_hash_name !== item.name) {
-        this.itemsByName.set(item.market_hash_name, item);
-      }
-      const normalizedDefIndex = normalizeIndex(item.def_index);
-      if (normalizedDefIndex) {
-        const items = this.itemsByDefIndexList.get(normalizedDefIndex) ?? [];
-        items.push(item);
-        this.itemsByDefIndexList.set(normalizedDefIndex, items);
+    // 2. Collectibles
+    this.loadSpecificMap("collectibles.json", this.collectiblesByDefIndex, dataDir);
 
-        const existing = this.itemsByDefIndex.get(normalizedDefIndex);
-        if (!existing) {
-          this.itemsByDefIndex.set(normalizedDefIndex, item);
-        } else if (existing.id !== item.id) {
-          const existingPriority = getSchemaItemPriority(existing);
-          const incomingPriority = getSchemaItemPriority(item);
-          let action: "kept_existing" | "replaced_existing" = "kept_existing";
-          if (incomingPriority > existingPriority) {
-            this.itemsByDefIndex.set(normalizedDefIndex, item);
-            action = "replaced_existing";
+    // 3. Crates
+    this.loadSpecificMap("crates.json", this.cratesByDefIndex, dataDir);
+
+    // 4. Graffiti
+    this.loadSpecificMap("graffiti.json", this.graffitiByDefIndex, dataDir);
+
+    // 5. Patches
+    this.loadSpecificMap("patches.json", this.patchesByDefIndex, dataDir);
+
+    // 6. Tools
+    this.loadSpecificMap("tools.json", this.toolsByDefIndex, dataDir);
+
+    // 7. Stickers
+    this.loadSpecificMap("stickers.json", this.stickersByDefIndex, dataDir);
+
+    // 8. Keychains
+    this.loadSpecificMap("keychains.json", this.keychainsByDefIndex, dataDir);
+
+    // 9. Music Kits
+    this.loadSpecificMap("music_kits.json", this.musicKitsByDefIndex, dataDir);
+
+    // 10. Highlights
+    this.loadSpecificMap("highlights.json", this.highlightsByDefIndex, dataDir);
+
+    // 11. Sticker Slabs
+    this.loadSpecificMap("sticker_slabs.json", this.slabsByDefIndex, dataDir);
+
+    // 12. Skins (Main source for paint_index)
+    // We load this specially because we also need to index by paint_index
+    const skinsPath = path.join(dataDir, "skins.json");
+    try {
+      const skinsRaw = fs.readFileSync(skinsPath, "utf-8");
+      const skins = JSON.parse(skinsRaw) as SkinSchema[];
+      skins.forEach((skin) => {
+        // Index by def_index
+        const normalizedDefIndex = normalizeIndex(skin.def_index);
+        if (normalizedDefIndex) {
+          // If multiple skins share the same def_index (rare for base skins, but possible),
+          // we usually want the base one or just any. For deterministic lookup, we just take the first one
+          // or rely on paint_index for actual resolution.
+          if (!this.skinsByDefIndex.has(normalizedDefIndex)) {
+             this.skinsByDefIndex.set(normalizedDefIndex, skin);
           }
         }
-      }
-      const normalizedPaintIndex = normalizeIndex(item.paint_index);
-      if (normalizedPaintIndex) {
-        const items = this.itemsByPaintIndex.get(normalizedPaintIndex) ?? [];
-        items.push(item);
-        this.itemsByPaintIndex.set(normalizedPaintIndex, items);
-      }
-      if (item.original?.item_name) {
-        const items = this.itemsByOriginalItemName.get(item.original.item_name) ?? [];
-        items.push(item);
-        this.itemsByOriginalItemName.set(item.original.item_name, items);
-      }
-      if (item.original?.loc_name) {
-        const items = this.itemsByOriginalLocName.get(item.original.loc_name) ?? [];
-        items.push(item);
-        this.itemsByOriginalLocName.set(item.original.loc_name, items);
-      }
-      if (item.original?.name) {
-        const items = this.itemsByOriginalName.get(item.original.name) ?? [];
-        items.push(item);
-        this.itemsByOriginalName.set(item.original.name, items);
-      }
-    });
+        
+        // Index by paint_index
+        const normalizedPaintIndex = normalizeIndex(skin.paint_index);
+        if (normalizedPaintIndex) {
+          const items = this.itemsByPaintIndex.get(normalizedPaintIndex) ?? [];
+          items.push(skin);
+          this.itemsByPaintIndex.set(normalizedPaintIndex, items);
+        }
 
+        // Index by name (legacy support/search)
+        this.indexByName(skin);
+      });
+    } catch (error) {
+       console.warn("Failed to load skins.json:", error);
+    }
+  }
+
+  private loadSpecificMap(
+      filename: string, 
+      targetMap: Map<string, SkinSchema>, 
+      dataDir: string
+  ) {
+      const filePath = path.join(dataDir, filename);
+      try {
+        const raw = fs.readFileSync(filePath, "utf-8");
+        const items = JSON.parse(raw) as SkinSchema[];
+        items.forEach((item) => {
+          const normalizedDefIndex = normalizeIndex(item.def_index);
+          if (normalizedDefIndex) {
+            // For most categorical items, def_index is unique enough or we just take the first one
+            // E.g. music kits might have duplicates for StatTrak, we take first.
+            if (!targetMap.has(normalizedDefIndex)) {
+              targetMap.set(normalizedDefIndex, item);
+            }
+          }
+          
+          // Index by paint_index if present
+          const normalizedPaintIndex = normalizeIndex(item.paint_index);
+          if (normalizedPaintIndex) {
+            const items = this.itemsByPaintIndex.get(normalizedPaintIndex) ?? [];
+            items.push(item);
+            this.itemsByPaintIndex.set(normalizedPaintIndex, items);
+          }
+
+          // Index by name for search/legacy
+          this.indexByName(item);
+        });
+      } catch (error) {
+        console.warn(`Failed to load ${filename}:`, error);
+      }
+  }
+
+  private indexByName(item: SkinSchema) {
+    if (item.name) {
+      this.itemsByName.set(item.name, item);
+    }
+    if (item.market_hash_name && item.market_hash_name !== item.name) {
+      this.itemsByName.set(item.market_hash_name, item);
+    }
+    if (item.original?.item_name) {
+        // Only if we really need original names map, but let's keep it simple for now and NOT index them unless requested.
+        // The previous code indexed them. Let's start with clean maps.
+        // If we need them, we can add them back.
+    }
   }
 
   getByName(name: string): SkinSchema | null {
     return this.itemsByName.get(name) ?? null;
   }
 
-  getByDefIndex(
-    defIndex: string | number,
-    hint?: string | null,
-    typeHint?: string | null
-  ): SkinSchema | null {
+  getHighlightByDefIndex(defIndex: string | number): SkinSchema | null {
     const normalizedDefIndex = normalizeIndex(defIndex);
     if (!normalizedDefIndex) {
       return null;
     }
-    const items = this.itemsByDefIndexList.get(normalizedDefIndex);
-    if (!items || items.length === 0) {
+    return this.highlightsByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getSlabByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
       return null;
     }
-    if (items.length === 1) {
-      return items[0] ?? null;
-    }
-    const hasConflict = hasDefIndexCategoryConflict(items);
-    const canUseHint = Boolean(hint) && (!hasConflict || Boolean(typeHint));
-    if (hint && canUseHint) {
-      const byName = items.find(
-        (item) => item.name === hint || item.market_hash_name === hint
-      );
-      if (byName) {
-        return byName;
-      }
-      const byOriginal = items.find(
-        (item) =>
-          item.original?.item_name === hint ||
-          item.original?.loc_name === hint ||
-          item.original?.name === hint
-      );
-      if (byOriginal) {
-        return byOriginal;
-      }
-    }
-    if (typeHint) {
-      const normalizedTypeHint = normalizeTypeHint(typeHint);
-      if (normalizedTypeHint) {
-        const byType = items.find((item) =>
-          matchesTypeHint(item, normalizedTypeHint)
-        );
-        if (byType) {
-          return byType;
-        }
-      }
-    }
-    const primary = this.itemsByDefIndex.get(normalizedDefIndex);
-    if (primary) {
-      return primary;
-    }
-    return items[0] ?? null;
+    return this.slabsByDefIndex.get(normalizedDefIndex) ?? null;
   }
+
+  getToolByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
+      return null;
+    }
+    return this.toolsByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getStickerByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
+      return null;
+    }
+    return this.stickersByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getKeychainByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
+      return null;
+    }
+    return this.keychainsByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getMusicKitByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
+      return null;
+    }
+    return this.musicKitsByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getAgentByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
+      return null;
+    }
+    return this.agentsByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getCrateByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
+      return null;
+    }
+    return this.cratesByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getPatchByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
+      return null;
+    }
+    return this.patchesByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getCollectibleByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
+      return null;
+    }
+    return this.collectiblesByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getGraffitiByDefIndex(defIndex: string | number): SkinSchema | null {
+    const normalizedDefIndex = normalizeIndex(defIndex);
+    if (!normalizedDefIndex) {
+      return null;
+    }
+    return this.graffitiByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+  getSkinByDefIndex(defIndex: string | number): SkinSchema | null {
+      const normalizedDefIndex = normalizeIndex(defIndex);
+      if (!normalizedDefIndex) {
+        return null;
+      }
+      return this.skinsByDefIndex.get(normalizedDefIndex) ?? null;
+  }
+
+
 
   getByPaintIndex(
     paintIndex: string | number,
@@ -233,69 +344,65 @@ export class SkinSchemaService {
     if (!normalizedKitId) {
       return null;
     }
-    const items = this.itemsByDefIndexList.get(normalizedKitId);
-    if (!items || items.length === 0) {
-      return null;
+    // New logic: lookup in graffitiByDefIndex
+    const basicGraffiti = this.graffitiByDefIndex.get(normalizedKitId);
+    if (basicGraffiti) {
+        return basicGraffiti;
     }
-    const graffitiItems = items.filter((item) => item.id.startsWith("graffiti-"));
-    if (graffitiItems.length === 0) {
-      return null;
-    }
-    if (tintId !== null && tintId !== undefined) {
-      const candidateIds = [
-        `graffiti-${normalizedKitId}_${tintId}`,
-        `graffiti-${normalizedKitId}_${tintId + 1}`,
-        `graffiti-${normalizedKitId}`
-      ];
-      const match = graffitiItems.find((item) => candidateIds.includes(item.id));
-      if (match) {
-        return match;
-      }
-    }
-    return graffitiItems[0] ?? null;
+    // Fallback: Use new generic skin/defIndex lookup if needed, but graffiti map should cover it.
+    // The previous logic used itemsByDefIndexList which allowed finding graffiti even if defIndex collided.
+    // Now we have strict separation.
+    
+    // However, Graffiti tints are often handled by "graffiti-ID_TintID" or similar variations?
+    // Looking at graffiti.json, they just have def_index. The tint is applied on top.
+    // Checks service.ts: getGraffitiByKitAndTint was matching id prefixes.
+    // But graffiti.json only has base definitions?
+    // Let's return the base graffiti from our map.
+    return this.graffitiByDefIndex.get(normalizedKitId) ?? null;
   }
 
   getByOriginalItemName(
     itemName: string,
     defIndex?: string | number | null
   ): SkinSchema | null {
-    return this.findByOriginalKey(this.itemsByOriginalItemName, itemName, defIndex);
+    return this.findByOriginalKey(this.itemsByName, itemName, defIndex);
   }
 
   getByOriginalLocName(
     locName: string,
     defIndex?: string | number | null
   ): SkinSchema | null {
-    return this.findByOriginalKey(this.itemsByOriginalLocName, locName, defIndex);
+    return this.findByOriginalKey(this.itemsByName, locName, defIndex);
   }
 
   getByOriginalName(
     originalName: string,
     defIndex?: string | number | null
   ): SkinSchema | null {
-    return this.findByOriginalKey(this.itemsByOriginalName, originalName, defIndex);
+    return this.findByOriginalKey(this.itemsByName, originalName, defIndex);
   }
 
   private findByOriginalKey(
-    map: Map<string, SkinSchema[]>,
+    map: Map<string, SkinSchema>,
     key: string,
     defIndex?: string | number | null
   ): SkinSchema | null {
-    const items = map.get(key);
-    if (!items || items.length === 0) {
+    const item = map.get(key);
+    if (!item) {
       return null;
     }
     if (defIndex === undefined || defIndex === null) {
-      return items[0] ?? null;
+      return item;
     }
     const normalizedDefIndex = normalizeIndex(defIndex);
     if (!normalizedDefIndex) {
-      return items[0] ?? null;
+      return item;
     }
-    const match = items.find(
-      (item) => normalizeIndex(item.def_index) === normalizedDefIndex
-    );
-    return match ?? items[0] ?? null;
+    // Strict check: if defIndex provided, it must match
+    if (normalizeIndex(item.def_index) === normalizedDefIndex) {
+      return item;
+    }
+    return null;
   }
 }
 
@@ -311,47 +418,4 @@ function normalizeIndex(value: string | number | null | undefined): string | nul
   return String(value);
 }
 
-function normalizeTypeHint(typeHint: string): string | null {
-  const normalized = typeHint.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-}
 
-function hasDefIndexCategoryConflict(items: SkinSchema[]): boolean {
-  const categories = new Set<string>();
-  items.forEach((item) => {
-    categories.add(getItemCategory(item));
-  });
-  return categories.size > 1;
-}
-
-function getItemCategory(item: SkinSchema): string {
-  const id = item.id.toLowerCase();
-  if (id.startsWith("music_kit-") || id.startsWith("music-kit-")) {
-    return "music_kit";
-  }
-  if (id.startsWith("sticker-") || id.startsWith("sticker_slab-")) {
-    return "sticker";
-  }
-  if (id.startsWith("graffiti-")) {
-    return "graffiti";
-  }
-  if (id.startsWith("keychain-")) {
-    return "keychain";
-  }
-  if (
-    id.startsWith("weapon-") ||
-    id.startsWith("skin-") ||
-    id.startsWith("agent-") ||
-    id.startsWith("glove-") ||
-    id.startsWith("gloves-") ||
-    id.startsWith("crate-") ||
-    id.startsWith("case-") ||
-    id.startsWith("tool-") ||
-    id.startsWith("collectible-") ||
-    id.startsWith("pin-") ||
-    id.startsWith("patch-")
-  ) {
-    return "base";
-  }
-  return "other";
-}

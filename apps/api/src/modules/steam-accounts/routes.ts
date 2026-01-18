@@ -188,6 +188,14 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
       }
 
       try {
+        // Disconnect all other accounts for this user to ensure single active session
+        steamManager.disconnectAllForUser(userId);
+        await supabaseAdmin
+          .from("steam_accounts")
+          .update({ status: "idle" })
+          .eq("user_id", userId)
+          .eq("status", "connected");
+
         const client = await steamManager.connect(
           userId,
           inserted.id,
@@ -224,11 +232,18 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
 
         steamManager.setActiveAccount(userId, inserted.id);
 
-        // Fetch and save profile data in background (don't block response)
-        void fetchAndSaveProfileData(client, inserted.id, userId);
+        // Fetch and save profile data (awaiting it now to return full data)
+        await fetchAndSaveProfileData(client, inserted.id, userId);
+
+        // Refetch account to get the updated profile data
+        const { data: finalAccount } = await supabaseAdmin
+          .from("steam_accounts")
+          .select(ACCOUNT_SELECT_FIELDS)
+          .eq("id", inserted.id)
+          .single();
 
         return {
-          account: updated ?? inserted
+          account: finalAccount ?? updated ?? inserted
         };
       } catch (error) {
         await supabaseAdmin
@@ -279,6 +294,15 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
       if (savedToken) {
         try {
           console.log(`Attempting token-based reconnect for account ${account.id}`);
+          
+          // Disconnect all other accounts for this user to ensure single active session
+          steamManager.disconnectAllForUser(userId);
+          await supabaseAdmin
+            .from("steam_accounts")
+            .update({ status: "idle" })
+            .eq("user_id", userId)
+            .eq("status", "connected");
+
           const client = await steamManager.connect(
             userId,
             account.id,
@@ -313,10 +337,17 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
 
           steamManager.setActiveAccount(userId, account.id);
 
-          // Fetch and save profile data in background (only if stale)
-          void fetchAndSaveProfileData(client, account.id, userId, account);
+          // Fetch and save profile data (awaiting it now to return full data)
+          await fetchAndSaveProfileData(client, account.id, userId, account);
 
-          return { account: updated ?? account };
+          // Refetch account to get the updated profile data
+          const { data: finalAccount } = await supabaseAdmin
+            .from("steam_accounts")
+            .select(ACCOUNT_SELECT_FIELDS)
+            .eq("id", account.id)
+            .single();
+
+          return { account: finalAccount ?? updated ?? account };
         } catch (tokenError) {
           console.warn(`Token-based reconnect failed for account ${account.id}:`, tokenError);
           // Token expired or invalid, fall through to password-based login
@@ -332,6 +363,14 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
       }
 
       try {
+        // Disconnect all other accounts for this user to ensure single active session
+        steamManager.disconnectAllForUser(userId);
+        await supabaseAdmin
+          .from("steam_accounts")
+          .update({ status: "idle" })
+          .eq("user_id", userId)
+          .eq("status", "connected");
+
         const client = await steamManager.connect(
           userId,
           account.id,
@@ -367,10 +406,17 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
 
         steamManager.setActiveAccount(userId, account.id);
 
-        // Fetch and save profile data in background (only if stale)
-        void fetchAndSaveProfileData(client, account.id, userId, account);
+        // Fetch and save profile data (awaiting it now to return full data)
+        await fetchAndSaveProfileData(client, account.id, userId, account);
 
-        return { account: updated ?? account };
+       // Refetch account to get the updated profile data
+        const { data: finalAccount } = await supabaseAdmin
+          .from("steam_accounts")
+          .select(ACCOUNT_SELECT_FIELDS)
+          .eq("id", account.id)
+          .single();
+
+        return { account: finalAccount ?? updated ?? account };
       } catch (error) {
         await supabaseAdmin
           .from("steam_accounts")

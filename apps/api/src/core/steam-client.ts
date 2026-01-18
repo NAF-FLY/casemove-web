@@ -243,10 +243,18 @@ export class SteamClient implements ISteamClient {
 
     if (this.webSessionReady) {
       try {
-        const userData = await this.getSteamUserData(steamId64);
-        if (userData) {
-          avatarUrl = userData.avatarUrl;
-          accountCreatedAt = userData.memberSince;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const user = await new Promise<any>((resolve, reject) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (this.community as any).getSteamUser(steamId, (err: any, result: any) => {
+            if (err) reject(err);
+            else resolve(result);
+          });
+        });
+
+        if (user) {
+          avatarUrl = user.getAvatarURL("full");
+          accountCreatedAt = user.memberSince;
         }
       } catch (err) {
         console.warn("Failed to get extended profile data:", err);
@@ -263,56 +271,7 @@ export class SteamClient implements ISteamClient {
     };
   }
 
-  private async getSteamUserData(steamId64: string): Promise<{ avatarUrl: string | null; memberSince: Date | null } | null> {
-    try {
-      // Convert SteamID64 to AccountID for miniprofile API
-      // AccountID = SteamID64 - 76561197960265728
-      const accountId = BigInt(steamId64) - BigInt("76561197960265728");
-      const miniprofileUrl = `https://steamcommunity.com/miniprofile/${accountId}/json`;
-      
-      console.log("Fetching miniprofile from:", miniprofileUrl);
-      
-      const response = await fetch(miniprofileUrl, {
-        headers: {
-          "Accept": "application/json",
-          "User-Agent": "Mozilla/5.0 (compatible)"
-        }
-      });
-      
-      if (!response.ok) {
-        console.warn("Miniprofile request failed:", response.status);
-        return null;
-      }
-      
-      const data = await response.json() as MiniprofileResponse;
-      console.log("Miniprofile data:", data);
-      
-      // Parse member since from badge description
-      // Format: "Member since 16 February, 2015."
-      let memberSince: Date | null = null;
-      if (data.favorite_badge?.description) {
-        const match = data.favorite_badge.description.match(/Member since\s+(\d+\s+\w+,\s+\d{4})/i);
-        if (match && match[1]) {
-          try {
-            memberSince = new Date(match[1]);
-            if (isNaN(memberSince.getTime())) {
-              memberSince = null;
-            }
-          } catch {
-            memberSince = null;
-          }
-        }
-      }
-      
-      return {
-        avatarUrl: data.avatar_url ?? null,
-        memberSince
-      };
-    } catch (err) {
-      console.warn("Failed to fetch miniprofile:", err);
-      return null;
-    }
-  }
+
 
   private resolvePersonaName(): Promise<string | null> {
     if (this.client.accountInfo?.name) {
@@ -538,19 +497,7 @@ type GlobalOffensiveWithSchema = GlobalOffensive & {
   ) => void;
 };
 
-type MiniprofileResponse = {
-  level?: number;
-  level_class?: string;
-  avatar_url?: string;
-  persona_name?: string;
-  favorite_badge?: {
-    name?: string;
-    xp?: string;
-    level?: number;
-    description?: string;
-    icon?: string;
-  };
-};
+
 
 export type SteamInventoryItem = {
   id?: string | number;

@@ -71,7 +71,7 @@ export const useSteamAccountsStore = create<SteamAccountsState>((set, get) => ({
       const { accounts } = get();
 
       set({
-        accounts: [account, ...accounts],
+        accounts: [account, ...accounts.map(a => ({ ...a, status: "idle" as const }))],
         activeAccountId: account.id,
         actionLoading: null
       });
@@ -92,9 +92,10 @@ export const useSteamAccountsStore = create<SteamAccountsState>((set, get) => ({
       const { accounts } = get();
 
       set({
-        accounts: accounts.map((acc) =>
-          acc.id === accountId ? updatedAccount : acc
-        ),
+        accounts: accounts.map((acc) => {
+          if (acc.id === accountId) return updatedAccount;
+          return { ...acc, status: "idle" as const };
+        }),
         activeAccountId: accountId,
         actionLoading: null
       });
@@ -116,9 +117,10 @@ export const useSteamAccountsStore = create<SteamAccountsState>((set, get) => ({
       if (result) {
         const { accounts } = get();
         set({
-          accounts: accounts.map((acc) =>
-            acc.id === accountId ? result : acc
-          ),
+          accounts: accounts.map((acc) => {
+            if (acc.id === accountId) return result;
+            return { ...acc, status: "idle" as const };
+          }),
           activeAccountId: accountId,
           actionLoading: null
         });

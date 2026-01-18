@@ -3,7 +3,7 @@
 import { useState, type Key } from "react";
 
 import { Input, Tab, Tabs } from "@heroui/react";
-import { ArrowUpDown, Filter, Grid2X2, List, Search } from "lucide-react";
+import { ArrowUpDown, Filter, Grid2X2, List, RefreshCw, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,10 @@ type ToolbarProps = {
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
+  showRefresh?: boolean;
+  refreshLabel?: string;
+  refreshing?: boolean;
+  onRefreshClick?: () => void;
   showFilter?: boolean;
   filterLabel?: string;
   onFilterClick?: () => void;
@@ -35,6 +39,10 @@ export default function Toolbar({
   searchPlaceholder = "Search...",
   searchValue,
   onSearchChange,
+  showRefresh = false,
+  refreshLabel = "Refresh",
+  refreshing = false,
+  onRefreshClick,
   showFilter = true,
   filterLabel = "Filter",
   onFilterClick,
@@ -103,6 +111,18 @@ export default function Toolbar({
         />
       ) : null}
       <div className="flex items-center gap-2">
+        {showRefresh ? (
+          <Button
+            className="h-10 gap-2 rounded-xl border-border/60 bg-background/70 px-4"
+            onClick={onRefreshClick}
+            type="button"
+            variant="outline"
+            disabled={refreshing}
+          >
+            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+            <span>{refreshLabel}</span>
+          </Button>
+        ) : null}
         {showFilter ? (
           <Button
             className="h-10 gap-2 rounded-xl border-border/60 bg-background/70 px-4"

@@ -5,11 +5,35 @@ import { supabaseAdmin } from "../../core/supabase";
 import { getRefreshToken, saveRefreshToken } from "../steam-accounts/credentials";
 import { getInventory } from "./service";
 
+// Store last force refresh time per user to enforce 1-minute cooldown (TODO: change back to 5 min)
+const lastForceRefreshMap = new Map<string, number>();
+const FORCE_REFRESH_COOLDOWN = 1 * 60 * 1000; // 1 minute for testing
+
 export async function registerInventoryRoutes(app: FastifyInstance) {
   app.get("/inventory", async (request, reply) => {
     if (!request.user) {
       return reply.code(401).send({ message: "Unauthorized" });
     }
+
+    const query = request.query as { forceRefresh?: string };
+    const forceRefreshRequested = query.forceRefresh === "true";
+    
+    // Check force refresh cooldown
+    let forceRefresh = false;
+    if (forceRefreshRequested) {
+      const lastRefresh = lastForceRefreshMap.get(request.user.userId) ?? 0;
+      const timeSinceLastRefresh = Date.now() - lastRefresh;
+      console.log(`[Inventory] Force refresh requested. Last refresh: ${lastRefresh}, Time since: ${timeSinceLastRefresh}ms, Cooldown: ${FORCE_REFRESH_COOLDOWN}ms`);
+      if (timeSinceLastRefresh >= FORCE_REFRESH_COOLDOWN) {
+        forceRefresh = true;
+        lastForceRefreshMap.set(request.user.userId, Date.now());
+        console.log(`[Inventory] Force refresh APPROVED`);
+      } else {
+        const remainingSeconds = Math.ceil((FORCE_REFRESH_COOLDOWN - timeSinceLastRefresh) / 1000);
+        console.log(`[Inventory] Force refresh on cooldown, ${remainingSeconds}s remaining`);
+      }
+    }
+    console.log(`[Inventory] Final forceRefresh value: ${forceRefresh}`);
 
     try {
       // Resolve active account ID from DB (robust against server restarts)
@@ -69,7 +93,7 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
         // Client remains undefined, will rely on cache
       }
 
-      const items = await getInventory(client, steamAccountId);
+      const items = await getInventory(client, steamAccountId, forceRefresh);
 
       return { items };
     } catch (error) {

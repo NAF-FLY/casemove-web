@@ -5,8 +5,8 @@ import type {
 
 import type { ISteamClient, SteamInventoryItem } from "../../core/steam-client";
 import { supabaseAdmin } from "../../core/supabase";
-import { skinSchemaService } from "../schema/skin-schema.service";
-import { getSchemaItemPriority, matchesTypeHint } from "../schema/schema-helpers";
+import { skinSchemaService, type SkinSchema } from "../schema/skin-schema.service";
+
 import { priceService } from "./price.service";
 
 type ItemSchemaLookup = Pick<
@@ -18,24 +18,31 @@ type ItemSchemaItem = ReturnType<ItemSchemaLookup["getItemSchemaItem"]>;
 
 export async function getInventory(
   client: ISteamClient | undefined,
-  steamAccountId: string
+  steamAccountId: string,
+  forceRefresh = false
 ): Promise<InventoryItemDTO[]> {
-  // 1. Check cache
-  const { data: cache } = await supabaseAdmin
-    .from("steam_inventory_cache")
-    .select("items, updated_at")
-    .eq("steam_account_id", steamAccountId)
-    .single();
 
-  if (cache) {
-    const age = Date.now() - new Date(cache.updated_at).getTime();
-    if (age < 60 * 60 * 1000) { // 1 hour
-      console.log("Fetching inventory from cache");
-      return cache.items as InventoryItemDTO[];
+  console.log(`[getInventory] Called with forceRefresh=${forceRefresh}, steamAccountId=${steamAccountId}`);
+  // 1. Check cache (skip if forceRefresh)
+  if (!forceRefresh) {
+    const { data: cache } = await supabaseAdmin
+      .from("steam_inventory_cache")
+      .select("items, updated_at")
+      .eq("steam_account_id", steamAccountId)
+      .single();
+
+    if (cache) {
+      const age = Date.now() - new Date(cache.updated_at).getTime();
+      if (age < 60 * 60 * 1000) { // 1 hour
+        console.log("Fetching inventory from cache");
+        return cache.items as InventoryItemDTO[];
+      }
+      console.log(`Inventory cache stale (${age / 1000}s old), refreshing...`);
+    } else {
+      console.log("Inventory cache miss, fetching from Steam...");
     }
-    console.log(`Inventory cache stale (${age / 1000}s old), refreshing...`);
   } else {
-    console.log("Inventory cache miss, fetching from Steam...");
+    console.log("Force refresh requested, bypassing cache...");
   }
 
   // 2. Fetch from Steam
@@ -46,7 +53,19 @@ export async function getInventory(
   const rawItems = await client.getInventory();
   const resolvedItems = resolveSteamInventory(rawItems);
   await client.loadItemSchema();
-  const dtos = resolvedItems.map((item) => mapSteamItemToDTO(item, client));
+  
+  const dtos = resolvedItems
+    .map((item) => mapSteamItemToDTO(item, client))
+    .sort((a, b) => {
+      // Sort by Asset ID descending (Newest first)
+      try {
+        const idA = BigInt(a.id || "0");
+        const idB = BigInt(b.id || "0");
+        return idA < idB ? 1 : idA > idB ? -1 : 0;
+      } catch {
+        return 0;
+      }
+    });
 
   // 3. Populate prices immediately (so they are cached)
   const marketHashNames = dtos
@@ -79,129 +98,24 @@ export async function getInventory(
 function resolveSteamInventory(
   rawItems: SteamInventoryItem[]
 ): SteamInventoryItem[] {
-  // Detailed raw item logging removed to keep console readable.
-  const hiddenItems: Array<{
-    id: string;
-    def_index: string | number | null;
-    inventory: number | null;
-    flags: number | null;
-    origin: number | null;
-    position: number | null;
-  }> = [];
-  const visibleItems: SteamInventoryItem[] = [];
-  for (const item of rawItems) {
-    if (isHiddenGcItem(item)) {
-      hiddenItems.push({
-        id: String(item.id ?? item.assetid ?? ""),
-        def_index: item.def_index ?? null,
-        inventory: item.inventory ?? null,
-        flags: item.flags ?? null,
-        origin: item.origin ?? null,
-        position: item.position ?? null
-      });
-      continue;
-    }
-    visibleItems.push(item);
-  }
-  console.log(
-    `Steam inventory counts: raw=${rawItems.length} hidden=${hiddenItems.length} visible=${visibleItems.length}`
-  );
+  console.log(`Steam inventory counts: raw=${rawItems.length}`);
+  
+  // Debug logging removed as we are moving it to mapSteamItemToDTO for better context
+  
+  return rawItems.filter((item) => !shouldHideItem(item));
+}
 
-  const dedupedItems: SteamInventoryItem[] = [];
-  const seenIds = new Set<string>();
-  for (const item of visibleItems) {
-    const id = String(item.id ?? item.assetid ?? "");
-    if (seenIds.has(id)) {
-      continue;
-    }
-    seenIds.add(id);
-    dedupedItems.push(item);
-  }
-  console.log(
-    `Steam inventory counts: deduped=${dedupedItems.length}`
-  );
+function shouldHideItem(item: SteamInventoryItem): boolean {
+  const defIndex = Number(item.def_index);
+  
+  // Filter known service/hidden items
+  if (defIndex === 4001) return true; // C4 / Service item
+  if (defIndex === 36) return true;   // C4 / Service item
+  if (defIndex === 1348) return true; // Unsealed Graffiti (Not tradable/usable in inventory context)
 
-  const slotGroups = new Map<string, SteamInventoryItem[]>();
-  const itemsWithoutSlots: SteamInventoryItem[] = [];
-  for (const item of dedupedItems) {
-    const inventory = item.inventory ?? null;
-    const position = item.position ?? null;
-    if (inventory === null || position === null) {
-      itemsWithoutSlots.push(item);
-      continue;
-    }
-    const key = `${String(inventory)}:${String(position)}`;
-    const items = slotGroups.get(key) ?? [];
-    items.push(item);
-    slotGroups.set(key, items);
-  }
-
-  const collisionDetails: Array<{
-    slot: string;
-    candidates: Array<{
-      id: string;
-      def_index: string | number | null;
-      score: number;
-      reason: string;
-    }>;
-    chosen: { id: string; def_index: string | number | null; score: number; reason: string };
-  }> = [];
-  const resolvedItems: SteamInventoryItem[] = [...itemsWithoutSlots];
-
-  for (const [slot, items] of slotGroups.entries()) {
-    if (items.length === 1) {
-      resolvedItems.push(items[0]);
-      continue;
-    }
-
-    let bestItem = items[0];
-    let bestScore = -1;
-    let bestReason = "default";
-
-    const candidates = items.map((item) => {
-      const { score, reason } = getSlotCollisionScore(item);
-      if (score > bestScore) {
-        bestItem = item;
-        bestScore = score;
-        bestReason = reason;
-      }
-      return {
-        id: String(item.id ?? item.assetid ?? ""),
-        def_index: item.def_index ?? null,
-        score,
-        reason
-      };
-    });
-
-    collisionDetails.push({
-      slot,
-      candidates,
-      chosen: {
-        id: String(bestItem.id ?? bestItem.assetid ?? ""),
-        def_index: bestItem.def_index ?? null,
-        score: bestScore,
-        reason: bestReason
-      }
-    });
-    resolvedItems.push(bestItem);
-  }
-
-  console.log(
-    `Steam inventory collisions: slots=${collisionDetails.length}`
-  );
-  console.log(
-    `Steam inventory counts: resolved=${resolvedItems.length}`
-  );
-
-  const minExpected = Math.floor(dedupedItems.length * 0.9);
-  if (resolvedItems.length < minExpected) {
-    console.warn(
-      `Steam inventory collision collapse detected, returning deduped items instead: deduped=${dedupedItems.length} resolved=${resolvedItems.length}`
-    );
-    return dedupedItems;
-  }
-
-  return resolvedItems;
+  // Name check removed to avoid false positives.
+  
+  return false;
 }
 
 function getWearName(paintWear?: number): string | null {
@@ -236,84 +150,7 @@ function stripWearSuffix(name: string): string {
   return match[1].trim();
 }
 
-function resolveSchemaItemByName(
-  defIndex: string | number | null | undefined,
-  ...names: Array<string | null | undefined>
-): ReturnType<typeof skinSchemaService.getByName> | null {
-  for (const name of names) {
-    if (!name) {
-      continue;
-    }
-    const direct = skinSchemaService.getByName(name);
-    if (direct) {
-      return direct;
-    }
-    const stripped = stripWearSuffix(name);
-    if (stripped !== name) {
-      const strippedMatch = skinSchemaService.getByName(stripped);
-      if (strippedMatch) {
-        return strippedMatch;
-      }
-    }
-    if (defIndex !== undefined && defIndex !== null) {
-      if (name.startsWith("#")) {
-        const byItemName = skinSchemaService.getByOriginalItemName(name, defIndex);
-        if (byItemName) {
-          return byItemName;
-        }
-        const byLocName = skinSchemaService.getByOriginalLocName(name, defIndex);
-        if (byLocName) {
-          return byLocName;
-        }
-      }
-      const byOriginalName = skinSchemaService.getByOriginalName(name, defIndex);
-      if (byOriginalName) {
-        return byOriginalName;
-      }
-    }
-  }
-  return null;
-}
 
-function getItemTypeHint(
-  rawItem: SteamInventoryItem,
-  ...names: Array<string | null | undefined>
-): string | null {
-  const typeHint = rawItem.type?.trim();
-  if (typeHint) {
-    return typeHint.toLowerCase();
-  }
-  const typeTag = rawItem.tags?.find(
-    (tag) => tag.category?.toLowerCase() === "type"
-  );
-  if (typeTag?.name) {
-    return typeTag.name.trim().toLowerCase();
-  }
-  for (const name of names) {
-    if (!name) {
-      continue;
-    }
-    const normalized = name.toLowerCase();
-    if (normalized.includes("graffiti") || normalized.includes("spray")) {
-      return "graffiti";
-    }
-    if (normalized.includes("music kit") || normalized.includes("musickit")) {
-      return "music kit";
-    }
-    if (normalized.includes("sticker")) {
-      return "sticker";
-    }
-    if (
-      normalized.includes("case") ||
-      normalized.includes("container") ||
-      normalized.includes("capsule") ||
-      normalized.includes("package")
-    ) {
-      return "case";
-    }
-  }
-  return null;
-}
 
 function getAttributeValue(
   rawItem: SteamInventoryItem,
@@ -426,35 +263,149 @@ function getGraffitiTintId(rawItem: SteamInventoryItem): number | null {
   return tint;
 }
 
-function shouldResolveGraffitiFromStickerBranch(
-  rawItem: SteamInventoryItem
-): boolean {
-  const defIndex = Number(rawItem.def_index);
-  if (defIndex !== 1348 && defIndex !== 1349) {
-    return false;
-  }
-  if (getPaintWear(rawItem) !== null) {
-    return false;
-  }
-  return true;
-}
 
-function isMusicKitBaseItem(
-  rawItem: SteamInventoryItem,
-  schemaItem: ItemSchemaItem
-): boolean {
+
+type ItemTypeResolution = {
+  type: 'highlight' | 'slab' | 'keychain' | 'sticker' | 'music_kit' | 'graffiti' | 'skin' | 'tool' | 'agent' | 'crate' | 'patch' | 'collectible' | 'other';
+  lookupId?: number | null;
+  lookupMethod: 'def_index' | 'attr' | 'paint' | 'name' | 'none';
+};
+
+function resolveItemType(
+  rawItem: SteamInventoryItem
+): ItemTypeResolution {
   const defIndex = Number(rawItem.def_index);
-  if (defIndex === 1314) {
-    return true;
+  
+  // 1. Check Container 1355 Special Items (Keychains, Highlights, Sticker Slabs)
+  if (defIndex === 1355) {
+    const highlightId = getAttributeValue(rawItem, 314, true);
+    if (highlightId !== null) {
+      return { type: 'highlight', lookupId: highlightId, lookupMethod: 'attr' };
+    }
+    const slabStickerId = getAttributeValue(rawItem, 321, true);
+    if (slabStickerId !== null) {
+      return { type: 'slab', lookupId: slabStickerId, lookupMethod: 'attr' };
+    }
+    const keychainId = getAttributeValue(rawItem, 299, true);
+    if (keychainId !== null) {
+      return { type: 'keychain', lookupId: keychainId, lookupMethod: 'attr' };
+    }
+    // Fallback if inside container but no attributes found (shouldn't happen for valid items)
+    return { type: 'other', lookupMethod: 'name' };
   }
-  const schemaText = [
-    schemaItem?.name ?? "",
-    schemaItem?.item_name ?? "",
-    schemaItem?.item_type_name ?? ""
-  ]
-    .join(" ")
-    .toLowerCase();
-  return schemaText.includes("musickit") || schemaText.includes("music kit");
+
+  // 2. Skins (Pre-check by attributes)
+  // CRITICAL: We check this BEFORE stickers because some weapons (e.g. def_index 7 AK-47) 
+  // share IDs with legacy stickers (def_index 7 Sticker | Polar Bears).
+  // If an item has paint_index or paint_wear, it is definitely a Skin/Weapon/Glove, NOT a sticker.
+  const paintWear = getPaintWear(rawItem);
+  const paintIndex = rawItem.paint_index;
+  if (paintWear !== null || (paintIndex !== undefined && paintIndex !== null)) {
+    // If it has paint, it's a skin.
+    return { type: 'skin', lookupId: paintIndex, lookupMethod: 'paint' };
+  }
+  
+  // 3. Tools
+  const toolFromMap = skinSchemaService.getToolByDefIndex(defIndex);
+  if (toolFromMap) {
+    return { type: 'tool', lookupId: defIndex, lookupMethod: 'def_index' };
+  }
+  
+  // 4. Agents
+  const agentFromMap = skinSchemaService.getAgentByDefIndex(defIndex);
+  if (agentFromMap) {
+    return { type: 'agent', lookupId: defIndex, lookupMethod: 'def_index' };
+  }
+
+  // 5. Crates
+  const crateFromMap = skinSchemaService.getCrateByDefIndex(defIndex);
+  if (crateFromMap) {
+    return { type: 'crate', lookupId: defIndex, lookupMethod: 'def_index' };
+  }
+
+  // 6. Collectibles
+  const collectibleFromMap = skinSchemaService.getCollectibleByDefIndex(defIndex);
+  if (collectibleFromMap) {
+    return { type: 'collectible', lookupId: defIndex, lookupMethod: 'def_index' };
+  }
+
+  // 7. Patches
+  const patchFromMap = skinSchemaService.getPatchByDefIndex(defIndex);
+  if (patchFromMap) {
+    return { type: 'patch', lookupId: defIndex, lookupMethod: 'def_index' };
+  }
+
+  // 8. Graffiti
+  // Explicit check for Graffiti Container 1348 (Unsealed Graffiti) and 1349 (Sealed Graffiti)
+  // These have Sticker ID (Attr 113) and Tint (Attr 233)
+  if (defIndex === 1348 || defIndex === 1349) {
+    const graffitiId = getStickerKitId(rawItem);
+    return { type: 'graffiti', lookupId: graffitiId, lookupMethod: 'attr' };
+  }
+  
+  const graffitiFromMap = skinSchemaService.getGraffitiByDefIndex(defIndex);
+  if (graffitiFromMap) {
+    // Should we use tint? Maps map base graffiti.
+    // DTO mapping will retrieve it.
+    // Use stickerKitId/defIndex logic from legacy if needed, or just defIndex
+    const stickerKitId = getStickerKitId(rawItem);
+    return { type: 'graffiti', lookupId: stickerKitId ?? defIndex, lookupMethod: 'def_index' };
+  }
+  
+  // 9. Keychains (standalone)
+  const keychainFromMap = skinSchemaService.getKeychainByDefIndex(defIndex);
+  if (keychainFromMap) {
+    return { type: 'keychain', lookupId: defIndex, lookupMethod: 'def_index' };
+  }
+
+  // 10. Stickers (Strict Type Check)
+  // We strictly check if the item acts like a sticker (via type/tags) OR is a known container.
+  // This avoids ID collisions where Weapon ID 1 matches Sticker Kit ID 1.
+  const isStickerType = 
+    rawItem.type?.toLowerCase().includes('sticker') ||
+    rawItem.tags?.some(tag => tag.category?.toLowerCase() === 'type' && tag.name?.toLowerCase() === 'sticker') ||
+    defIndex === 1209; // Standard Sticker Item ID
+
+  if (isStickerType) {
+    if (defIndex === 1209) {
+      const stickerId = getStickerKitId(rawItem);
+      return { type: 'sticker', lookupId: stickerId, lookupMethod: 'attr' };
+    }
+    const stickerFromMap = skinSchemaService.getStickerByDefIndex(defIndex);
+    if (stickerFromMap) {
+       return { type: 'sticker', lookupId: defIndex, lookupMethod: 'def_index' };
+    }
+  }
+
+  // 11. Music Kits (Strict Type Check)
+  const isMusicKitType = 
+      rawItem.type?.toLowerCase().includes('music kit') ||
+      rawItem.tags?.some(tag => tag.category?.toLowerCase() === 'type' && tag.name?.toLowerCase() === 'music kit') ||
+      defIndex === 1314;
+
+  if (isMusicKitType) {
+    if (defIndex === 1314) {
+        const musicKitId = getAttributeValue(rawItem, 166, true);
+        return { type: 'music_kit', lookupId: musicKitId, lookupMethod: 'attr' };
+    }
+    const musicKitFromMap = skinSchemaService.getMusicKitByDefIndex(defIndex);
+    if (musicKitFromMap) {
+        return { type: 'music_kit', lookupId: defIndex, lookupMethod: 'def_index' };
+    }
+  }
+
+  // 12. Skins fallback (Generic check for strict map match)
+  const skinFromMap = skinSchemaService.getSkinByDefIndex(defIndex);
+  if (skinFromMap) {
+      return { type: 'skin', lookupId: rawItem.paint_index ?? defIndex, lookupMethod: 'paint' };
+  }
+  // Generic check for paint_index if not in skin map (e.g. new weapon not in skins.json yet but has paint)
+  if (rawItem.paint_index !== undefined && rawItem.paint_index !== null) {
+     return { type: 'skin', lookupId: rawItem.paint_index, lookupMethod: 'paint' };
+  }
+  
+  // Final Fallback: Unknown
+  return { type: 'other', lookupId: defIndex, lookupMethod: 'def_index' };
 }
 
 function getNumericDefIndex(
@@ -472,71 +423,105 @@ function mapSteamItemToDTO(
   schemaLookup: ItemSchemaLookup
 ): InventoryItemDTO {
   const defIndex = rawItem.def_index;
-  const paintIndex = rawItem.paint_index;
   const paintWear = getPaintWear(rawItem);
   const wearName = getWearName(paintWear ?? undefined);
   const hasPaintWear = paintWear !== null && Number.isFinite(paintWear);
-  const schemaItem = schemaLookup.getItemSchemaItem(defIndex);
   const schemaName = schemaLookup.getItemSchemaName(defIndex);
   const rawName = rawItem.market_hash_name ?? rawItem.name ?? null;
-  const typeHint = getItemTypeHint(rawItem, rawName);
-  const nameLookupItem = resolveSchemaItemByName(defIndex, rawName, schemaName);
-  const stickerBranchAllowed = shouldResolveGraffitiFromStickerBranch(rawItem);
-  const stickerKitId = getStickerKitId(rawItem);
-  const graffitiTintId = getGraffitiTintId(rawItem);
-  const graffitiKitId =
-    stickerKitId ?? (graffitiTintId !== null ? getNumericDefIndex(defIndex) : null);
-  const hasGraffitiAttributes = graffitiTintId !== null && graffitiKitId !== null;
-  const graffitiItem = hasGraffitiAttributes
-    ? skinSchemaService.getGraffitiByKitAndTint(graffitiKitId, graffitiTintId)
-    : null;
-  const stickerBranchTriggered = stickerBranchAllowed && stickerKitId !== null;
-  const musicKitId = isMusicKitBaseItem(rawItem, schemaItem)
-    ? getAttributeValue(rawItem, 166, true)
-    : null;
-  const musicKitItem =
-    musicKitId !== null
-      ? skinSchemaService.getByDefIndex(musicKitId, rawName, "music kit")
-      : null;
-  const defIndexItem =
-    defIndex !== undefined && defIndex !== null
-      ? skinSchemaService.getByDefIndex(defIndex, rawName, typeHint)
-      : null;
-  const skinItem =
-    !hasGraffitiAttributes &&
-    hasPaintWear &&
-    paintIndex !== undefined &&
-    paintIndex !== null
-      ? skinSchemaService.getByPaintIndex(paintIndex, wearName, defIndex ?? null)
-      : null;
-  let baseItem = musicKitItem ?? graffitiItem ?? nameLookupItem ?? defIndexItem;
-  if (nameLookupItem && defIndexItem && nameLookupItem.id !== defIndexItem.id) {
-    const namePriority = getSchemaItemPriority(nameLookupItem);
-    const defPriority = getSchemaItemPriority(defIndexItem);
-    if (defPriority > namePriority) {
-      baseItem = defIndexItem;
-    } else if (namePriority > defPriority) {
-      baseItem = nameLookupItem;
-    }
-  }
-  if (
-    matchesTypeHint(nameLookupItem, typeHint) &&
-    !matchesTypeHint(defIndexItem, typeHint)
-  ) {
-    baseItem = nameLookupItem;
-  } else if (
-    matchesTypeHint(defIndexItem, typeHint) &&
-    !matchesTypeHint(nameLookupItem, typeHint)
-  ) {
-    baseItem = defIndexItem;
+
+  const resolution = resolveItemType(rawItem);
+  let baseItem: SkinSchema | null = null;
+
+  switch (resolution.type) {
+    case 'highlight':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getHighlightByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'slab':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getSlabByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'keychain':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getKeychainByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'sticker':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getStickerByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'music_kit':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getMusicKitByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'graffiti':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        const tint = getGraffitiTintId(rawItem);
+        baseItem = skinSchemaService.getGraffitiByKitAndTint(resolution.lookupId, tint);
+      }
+      break;
+    case 'skin':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getByPaintIndex(resolution.lookupId, wearName, defIndex ?? null);
+      }
+      break;
+    case 'tool':
+       if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getToolByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'agent':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getAgentByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'crate':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getCrateByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'collectible':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getCollectibleByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'patch':
+      if (resolution.lookupId !== null && resolution.lookupId !== undefined) {
+        baseItem = skinSchemaService.getPatchByDefIndex(resolution.lookupId);
+      }
+      break;
+    case 'other':
+      // No fallback logic. If it's other, it's unknown.
+      // We might want to look up by name in the generic map just in case?
+      // "Remove outdated heuristic-based code ... generic fallback logic".
+      // We'll trust our maps. If maps miss it, it will be "Unknown item".
+      if (rawName) {
+           baseItem = skinSchemaService.getByName(rawName);
+      }
+      break;
   }
 
+  if (resolution.type !== 'other' && !baseItem) {
+      console.warn(`[mapSteamItemToDTO] Schema lookup failed for resolved type: ${resolution.type}, lookupId=${resolution.lookupId}, defIndex=${defIndex}`);
+  }
+
+  // Fallback 2 removed: no resolveSchemaItemByName recursion.
+
+  // 3. Construct DTO
   let marketHashName: string;
-  if (skinItem) {
-    const baseName = stripWearSuffix(skinItem.name);
-    marketHashName = wearName ? `${baseName} (${wearName})` : skinItem.name;
-  } else if (baseItem) {
-    marketHashName = baseItem.name;
+  if (baseItem) {
+    // If it's a skin with wear, append the wear
+    if (hasPaintWear && wearName && baseItem.id.startsWith('skin-')) {
+       // Ideally baseItem name for skins shouldn't have wear, but let's be safe
+       const baseName = stripWearSuffix(baseItem.name);
+       marketHashName = `${baseName} (${wearName})`;
+    } else {
+       marketHashName = baseItem.name;
+    }
   } else if (rawName) {
     marketHashName = rawName;
   } else if (schemaName) {
@@ -547,20 +532,23 @@ function mapSteamItemToDTO(
     marketHashName = "Unknown item";
   }
 
-  const schemaSource = skinItem ?? baseItem ?? defIndexItem;
-  const image = skinItem?.image ?? baseItem?.image ?? defIndexItem?.image ?? null;
-  const schemaDto: InventoryItemSchemaDTO | null = schemaSource
+  // Use the resolved item for schema info
+  const image = baseItem?.image ?? null;
+
+
+
+
+
+  const schemaDto: InventoryItemSchemaDTO | null = baseItem
     ? {
-        id: schemaSource.id,
+        id: baseItem.id,
         name: marketHashName,
-        rarity: schemaSource.rarity?.name ?? null,
-        weapon: schemaSource.weapon?.name ?? null,
-        collection: schemaSource.collections?.[0]?.name ?? null,
+        rarity: baseItem.rarity?.name ?? null,
+        weapon: baseItem.weapon?.name ?? null, // Note: skinSchemaService items might not have 'weapon' property if it wasn't a skin, but the type allows safely accessing if present or ignoring
+        collection: baseItem.collections?.[0]?.name ?? null,
         image
       }
     : null;
-
-  // Mapping debug log removed to reduce console noise.
 
   // Steam returns icon_url as just a CDN hash, need to prepend base URL
   const iconHash = rawItem.icon_url ?? rawItem.icon ?? null;
@@ -580,33 +568,6 @@ function mapSteamItemToDTO(
   };
 }
 
-function isHiddenGcItem(rawItem: SteamInventoryItem): boolean {
-  const inventory = Number(rawItem.inventory);
-  const flags = Number(rawItem.flags);
-  const origin = Number(rawItem.origin);
-  const position = Number(rawItem.position);
-  return inventory === 3221225477 && flags === 24 && origin === 8 && position === 0;
-}
 
-function getSlotCollisionScore(rawItem: SteamInventoryItem): {
-  score: number;
-  reason: string;
-} {
-  const defIndex = Number(rawItem.def_index);
-  const stickerKitId = getStickerKitId(rawItem);
-  const graffitiTintId = getGraffitiTintId(rawItem);
-  if (
-    (defIndex === 1348 || defIndex === 1349) &&
-    stickerKitId !== null &&
-    graffitiTintId !== null
-  ) {
-    return { score: 4, reason: "graffiti_container_with_tint" };
-  }
-  if (getPaintWear(rawItem) !== null) {
-    return { score: 3, reason: "weapon_skin_paint_wear" };
-  }
-  if ((defIndex === 1348 || defIndex === 1349) && stickerKitId !== null) {
-    return { score: 2, reason: "graffiti_container_sticker_id" };
-  }
-  return { score: 1, reason: "default" };
-}
+
+

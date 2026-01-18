@@ -9,7 +9,15 @@ export async function GET(request: Request) {
   const token = cookieStore.get(cookieName)?.value;
   const authHeader =
     request.headers.get("authorization") ?? (token ? `Bearer ${token}` : null);
-  const response = await fetch(`${baseUrl}/inventory`, {
+  
+  // Forward forceRefresh query param
+  const url = new URL(request.url);
+  const forceRefresh = url.searchParams.get("forceRefresh");
+  const backendUrl = forceRefresh === "true" 
+    ? `${baseUrl}/inventory?forceRefresh=true` 
+    : `${baseUrl}/inventory`;
+  
+  const response = await fetch(backendUrl, {
     cache: "no-store",
     headers: authHeader ? { Authorization: authHeader } : undefined
   });

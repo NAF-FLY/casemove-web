@@ -12,9 +12,11 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { cn } from "@/lib/utils";
 import { useInventoryStore } from "@/store/inventory.store";
 import { useInventorySelection } from "@/store/inventorySelection.store";
+import { useSteamAccountsStore } from "@/store/steamAccounts.store";
 
 export default function InventoryPage() {
   const selectedCount = useInventorySelection((state) => state.selected.size);
+  const activeAccountId = useSteamAccountsStore((state) => state.activeAccountId);
   const { items, loading, error, loadInventory } = useInventoryStore();
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -52,8 +54,10 @@ export default function InventoryPage() {
     : "Inventory is empty or failed to load items.";
 
   useEffect(() => {
-    void loadInventory();
-  }, [loadInventory]);
+    if (activeAccountId) {
+      void loadInventory(activeAccountId);
+    }
+  }, [loadInventory, activeAccountId]);
 
   return (
     <PageContainer className="px-0">
@@ -74,6 +78,10 @@ export default function InventoryPage() {
               searchPlaceholder="Search items by name, type, or rarity..."
               searchValue={searchQuery}
               onSearchChange={setSearchQuery}
+              showRefresh
+              refreshLabel="Refresh"
+              refreshing={loading}
+              onRefreshClick={() => loadInventory(activeAccountId, true)}
               viewMode={viewMode}
               onViewModeChange={setViewMode}
             />
