@@ -20,6 +20,8 @@ export interface ISteamManager {
 export class SteamManager implements ISteamManager {
   private clients = new Map<string, Map<string, SteamClient>>();
   private activeAccountIdByUser = new Map<string, string>();
+  // Fix: Map to store in-flight connection promises to prevent race conditions
+  private connectionPromises = new Map<string, Promise<ISteamClient>>();
 
   private getUserClients(userId: string): Map<string, SteamClient> {
     const existing = this.clients.get(userId);
@@ -45,21 +47,39 @@ export class SteamManager implements ISteamManager {
       return existingClient;
     }
 
-    const client = new SteamClient();
-    
-    // Set callback BEFORE login so we capture the refreshToken event
-    if (onRefreshToken) {
-      client.setRefreshTokenCallback(onRefreshToken);
-    }
-    
-    await client.login(credentials);
-    userClients.set(steamAccountId, client);
-
-    if (!this.activeAccountIdByUser.has(userId)) {
-      this.activeAccountIdByUser.set(userId, steamAccountId);
+    // Check if there is already a connection in progress
+    const connectionKey = `${userId}:${steamAccountId}`;
+    const existingPromise = this.connectionPromises.get(connectionKey);
+    if (existingPromise) {
+      console.log(`Using existing connection promise for ${connectionKey}`);
+      return existingPromise;
     }
 
-    return client;
+    const connectPromise = (async () => {
+      try {
+        const client = new SteamClient();
+        
+        // Set callback BEFORE login so we capture the refreshToken event
+        if (onRefreshToken) {
+          client.setRefreshTokenCallback(onRefreshToken);
+        }
+        
+        await client.login(credentials);
+        userClients.set(steamAccountId, client);
+
+        if (!this.activeAccountIdByUser.has(userId)) {
+          this.activeAccountIdByUser.set(userId, steamAccountId);
+        }
+
+        return client;
+      } finally {
+        // Cleanup promise when done
+        this.connectionPromises.delete(connectionKey);
+      }
+    })();
+
+    this.connectionPromises.set(connectionKey, connectPromise);
+    return connectPromise;
   }
 
   getClient(userId: string, steamAccountId: string): ISteamClient {

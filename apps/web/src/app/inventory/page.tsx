@@ -14,10 +14,14 @@ import { useInventoryStore } from "@/store/inventory.store";
 import { useInventorySelection } from "@/store/inventorySelection.store";
 import { useSteamAccountsStore } from "@/store/steamAccounts.store";
 
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
+
+// ... existing imports
+
 export default function InventoryPage() {
   const selectedCount = useInventorySelection((state) => state.selected.size);
   const activeAccountId = useSteamAccountsStore((state) => state.activeAccountId);
-  const { items, loading, error, loadInventory } = useInventoryStore();
+  const { items, loading, error, loadInventory, isHydrated } = useInventoryStore();
   const [collapsed, setCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
@@ -53,11 +57,26 @@ export default function InventoryPage() {
     ? "No items match your search."
     : "Inventory is empty or failed to load items.";
 
+  const { accounts, loadAccounts } = useSteamAccountsStore();
+
+  // Ensure accounts are loaded (restore session if page refreshed)
+  useEffect(() => {
+    if (!activeAccountId && accounts.length === 0) {
+      void loadAccounts();
+    }
+  }, [activeAccountId, accounts.length, loadAccounts]);
+
   useEffect(() => {
     if (activeAccountId) {
       void loadInventory(activeAccountId);
     }
   }, [loadInventory, activeAccountId]);
+
+  useRefetchOnFocus(() => {
+    if (activeAccountId) {
+      void loadInventory(activeAccountId);
+    }
+  });
 
   return (
     <PageContainer className="px-0">
@@ -88,8 +107,8 @@ export default function InventoryPage() {
             {error ? (
               <p className="mt-4 text-sm text-destructive">{error}</p>
             ) : null}
-            {loading ? (
-              <p className="mt-4 text-sm text-muted-foreground">
+            {loading || !isHydrated ? (
+              <p className="mt-4 text-sm text-muted-foreground bg-secondary/50 p-4 rounded-lg animate-pulse">
                 Loading inventory...
               </p>
             ) : (

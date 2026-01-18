@@ -5,9 +5,9 @@ import { supabaseAdmin } from "../../core/supabase";
 import { getRefreshToken, saveRefreshToken } from "../steam-accounts/credentials";
 import { getInventory } from "./service";
 
-// Store last force refresh time per user to enforce 1-minute cooldown (TODO: change back to 5 min)
+// Store last force refresh time per user to enforce 5-minute cooldown
 const lastForceRefreshMap = new Map<string, number>();
-const FORCE_REFRESH_COOLDOWN = 1 * 60 * 1000; // 1 minute for testing
+const FORCE_REFRESH_COOLDOWN = 5 * 60 * 1000; // 5 minutes
 
 export async function registerInventoryRoutes(app: FastifyInstance) {
   app.get("/inventory", async (request, reply) => {
@@ -82,6 +82,13 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
                    await saveRefreshToken(steamAccountId, token);
                  }
                );
+               
+               // Fix: persistent status not updating after auto-reconnect
+               await supabaseAdmin
+                 .from("steam_accounts")
+                 .update({ status: "connected", last_login_at: new Date().toISOString() })
+                 .eq("id", steamAccountId);
+
                console.log("Auto-reconnect successful!");
             } else {
                console.warn("No refresh token found for auto-reconnect");

@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
+
 import { useSteamAccountsStore } from "@/store/steamAccounts.store";
 import type { SteamAccount } from "@/lib/api-client/steam-accounts";
 
@@ -205,6 +207,8 @@ function SteamAccountRow({
   );
 }
 
+
+
 export default function SteamAccountsListCard() {
   const {
     accounts,
@@ -231,6 +235,10 @@ export default function SteamAccountsListCard() {
     setMounted(true);
     void loadAccounts();
   }, [loadAccounts]);
+
+  useRefetchOnFocus(() => {
+    void loadAccounts();
+  });
 
   const handleConnect = async (accountId: string) => {
     // Try auto-reconnect first (using saved refresh token)

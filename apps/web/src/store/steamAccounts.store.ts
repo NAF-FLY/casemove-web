@@ -22,7 +22,8 @@ type SteamAccountsState = {
   actionLoading: string | null;
   addError: string | null;
   listError: string | null;
-  loadAccounts: () => Promise<void>;
+  lastUpdated: number;
+  loadAccounts: (force?: boolean) => Promise<void>;
   addAccount: (payload: CreateSteamAccountPayload) => Promise<void>;
   connectAccount: (
     accountId: string,
@@ -43,8 +44,17 @@ export const useSteamAccountsStore = create<SteamAccountsState>((set, get) => ({
   actionLoading: null,
   addError: null,
   listError: null,
+  lastUpdated: 0,
 
-  loadAccounts: async () => {
+  loadAccounts: async (force = false) => {
+    const CACHE_DURATION = 30 * 1000; // 1 minute
+    const now = Date.now();
+    const { lastUpdated, loading, accounts } = get();
+
+    if (!force && !loading && accounts.length > 0 && now - lastUpdated < CACHE_DURATION) {
+      return;
+    }
+
     set({ loading: true, listError: null });
 
     try {
@@ -53,7 +63,8 @@ export const useSteamAccountsStore = create<SteamAccountsState>((set, get) => ({
       set({
         accounts: data.accounts,
         activeAccountId: data.activeSteamAccountId,
-        loading: false
+        loading: false,
+        lastUpdated: Date.now()
       });
     } catch (error) {
       set({

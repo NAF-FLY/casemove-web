@@ -31,15 +31,22 @@ function shouldRefreshProfileData(account: {
   steam_id: string | null;
   avatar_url: string | null;
   profile_updated_at: string | null;
+  account_created_at?: string | null;
 }): boolean {
   console.log("[Profile] Checking if refresh needed for account:", account.steam_id, {
     hasAvatar: !!account.avatar_url,
+    hasCreatedAt: !!account.account_created_at,
     updatedAt: account.profile_updated_at
   });
 
   // If essential data is missing, refresh
   if (!account.steam_id) {
     console.log("[Profile] Refresh needed: missing steam_id");
+    return true;
+  }
+  
+  if (!account.account_created_at) {
+    console.log("[Profile] Refresh needed: missing account_created_at");
     return true;
   }
   
@@ -71,7 +78,12 @@ async function fetchAndSaveProfileData(
   client: ISteamClient,
   accountId: string,
   userId: string,
-  existingAccount?: { steam_id: string | null; avatar_url: string | null; profile_updated_at: string | null }
+  existingAccount?: { 
+    steam_id: string | null; 
+    avatar_url: string | null; 
+    profile_updated_at: string | null;
+    account_created_at?: string | null;
+  }
 ): Promise<void> {
   // Check if we need to refresh
   if (existingAccount && !shouldRefreshProfileData(existingAccount)) {
@@ -91,16 +103,28 @@ async function fetchAndSaveProfileData(
     console.log("[Profile] Got profile data:", profileData);
 
     // Only update fields that are present to avoid overwriting with nulls
-    // (e.g. if miniprofile fetch failed but we have data in DB)
     const updatePayload: Record<string, any> = {
       steam_id: profileData.steamId,
       profile_updated_at: new Date().toISOString()
     };
 
-    if (profileData.avatarUrl) updatePayload.avatar_url = profileData.avatarUrl;
+    if (profileData.avatarUrl) {
+      updatePayload.avatar_url = profileData.avatarUrl;
+    } else if (existingAccount?.avatar_url) {
+      // Keep existing avatar if new one is missing
+      console.log("[Profile] Keeping existing avatar data");
+    }
+
     if (profileData.profileUrl) updatePayload.profile_url = profileData.profileUrl;
     if (profileData.tradeUrl) updatePayload.trade_url = profileData.tradeUrl;
-    if (profileData.accountCreatedAt) updatePayload.account_created_at = profileData.accountCreatedAt.toISOString();
+    
+    // Special handling for accountCreatedAt: 
+    // If we have it in DB but API returns null (e.g. privacy settings), keep DB value.
+    if (profileData.accountCreatedAt) {
+      updatePayload.account_created_at = profileData.accountCreatedAt.toISOString();
+    } else if (existingAccount?.account_created_at) {
+      console.log("[Profile] Keeping existing account_created_at data");
+    }
 
     console.log("[Profile] Saving update updatePayload:", updatePayload);
 
@@ -141,8 +165,26 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
       return reply.code(500).send({ message: "Failed to load accounts" });
     }
 
+    // Verify connection status (handle server restart case)
+    const verifiedAccounts = await Promise.all(
+      (accounts ?? []).map(async (account) => {
+        if (
+          account.status === "connected" &&
+          !steamManager.hasClient(userId, account.id)
+        ) {
+          // Mismatch: DB says connected but no active client (e.g. after server restart)
+          await supabaseAdmin
+            .from("steam_accounts")
+            .update({ status: "idle" })
+            .eq("id", account.id);
+          return { ...account, status: "idle" };
+        }
+        return account;
+      })
+    );
+
     return {
-      accounts: accounts ?? [],
+      accounts: verifiedAccounts,
       activeSteamAccountId: profile?.active_steam_account_id ?? null
     };
   });

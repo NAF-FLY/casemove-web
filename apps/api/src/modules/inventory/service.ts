@@ -11,10 +11,8 @@ import { priceService } from "./price.service";
 
 type ItemSchemaLookup = Pick<
   ISteamClient,
-  "getItemSchemaItem" | "getItemSchemaName"
+  "getItemSchemaName"
 >;
-
-type ItemSchemaItem = ReturnType<ItemSchemaLookup["getItemSchemaItem"]>;
 
 export async function getInventory(
   client: ISteamClient | undefined,
@@ -22,7 +20,7 @@ export async function getInventory(
   forceRefresh = false
 ): Promise<InventoryItemDTO[]> {
 
-  console.log(`[getInventory] Called with forceRefresh=${forceRefresh}, steamAccountId=${steamAccountId}`);
+
   // 1. Check cache (skip if forceRefresh)
   if (!forceRefresh) {
     const { data: cache } = await supabaseAdmin
@@ -34,15 +32,9 @@ export async function getInventory(
     if (cache) {
       const age = Date.now() - new Date(cache.updated_at).getTime();
       if (age < 60 * 60 * 1000) { // 1 hour
-        console.log("Fetching inventory from cache");
         return cache.items as InventoryItemDTO[];
       }
-      console.log(`Inventory cache stale (${age / 1000}s old), refreshing...`);
-    } else {
-      console.log("Inventory cache miss, fetching from Steam...");
     }
-  } else {
-    console.log("Force refresh requested, bypassing cache...");
   }
 
   // 2. Fetch from Steam
@@ -98,10 +90,6 @@ export async function getInventory(
 function resolveSteamInventory(
   rawItems: SteamInventoryItem[]
 ): SteamInventoryItem[] {
-  console.log(`Steam inventory counts: raw=${rawItems.length}`);
-  
-  // Debug logging removed as we are moving it to mapSteamItemToDTO for better context
-  
   return rawItems.filter((item) => !shouldHideItem(item));
 }
 
@@ -113,8 +101,6 @@ function shouldHideItem(item: SteamInventoryItem): boolean {
   if (defIndex === 36) return true;   // C4 / Service item
   if (defIndex === 1348) return true; // Unsealed Graffiti (Not tradable/usable in inventory context)
 
-  // Name check removed to avoid false positives.
-  
   return false;
 }
 
@@ -408,15 +394,7 @@ function resolveItemType(
   return { type: 'other', lookupId: defIndex, lookupMethod: 'def_index' };
 }
 
-function getNumericDefIndex(
-  defIndex: string | number | null | undefined
-): number | null {
-  if (defIndex === null || defIndex === undefined) {
-    return null;
-  }
-  const numeric = Number(defIndex);
-  return Number.isFinite(numeric) ? numeric : null;
-}
+
 
 function mapSteamItemToDTO(
   rawItem: SteamInventoryItem,
@@ -495,21 +473,16 @@ function mapSteamItemToDTO(
       }
       break;
     case 'other':
-      // No fallback logic. If it's other, it's unknown.
-      // We might want to look up by name in the generic map just in case?
-      // "Remove outdated heuristic-based code ... generic fallback logic".
-      // We'll trust our maps. If maps miss it, it will be "Unknown item".
+      // Fallback: Unknown
       if (rawName) {
            baseItem = skinSchemaService.getByName(rawName);
       }
       break;
   }
 
-  if (resolution.type !== 'other' && !baseItem) {
-      console.warn(`[mapSteamItemToDTO] Schema lookup failed for resolved type: ${resolution.type}, lookupId=${resolution.lookupId}, defIndex=${defIndex}`);
-  }
 
-  // Fallback 2 removed: no resolveSchemaItemByName recursion.
+
+
 
   // 3. Construct DTO
   let marketHashName: string;
@@ -535,16 +508,12 @@ function mapSteamItemToDTO(
   // Use the resolved item for schema info
   const image = baseItem?.image ?? null;
 
-
-
-
-
   const schemaDto: InventoryItemSchemaDTO | null = baseItem
     ? {
         id: baseItem.id,
         name: marketHashName,
         rarity: baseItem.rarity?.name ?? null,
-        weapon: baseItem.weapon?.name ?? null, // Note: skinSchemaService items might not have 'weapon' property if it wasn't a skin, but the type allows safely accessing if present or ignoring
+        weapon: baseItem.weapon?.name ?? null,
         collection: baseItem.collections?.[0]?.name ?? null,
         image
       }

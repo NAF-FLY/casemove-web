@@ -184,11 +184,7 @@ export class SkinSchemaService {
     if (item.market_hash_name && item.market_hash_name !== item.name) {
       this.itemsByName.set(item.market_hash_name, item);
     }
-    if (item.original?.item_name) {
-        // Only if we really need original names map, but let's keep it simple for now and NOT index them unless requested.
-        // The previous code indexed them. Let's start with clean maps.
-        // If we need them, we can add them back.
-    }
+
   }
 
   getByName(name: string): SkinSchema | null {
@@ -344,66 +340,12 @@ export class SkinSchemaService {
     if (!normalizedKitId) {
       return null;
     }
-    // New logic: lookup in graffitiByDefIndex
-    const basicGraffiti = this.graffitiByDefIndex.get(normalizedKitId);
-    if (basicGraffiti) {
-        return basicGraffiti;
-    }
-    // Fallback: Use new generic skin/defIndex lookup if needed, but graffiti map should cover it.
-    // The previous logic used itemsByDefIndexList which allowed finding graffiti even if defIndex collided.
-    // Now we have strict separation.
-    
-    // However, Graffiti tints are often handled by "graffiti-ID_TintID" or similar variations?
-    // Looking at graffiti.json, they just have def_index. The tint is applied on top.
-    // Checks service.ts: getGraffitiByKitAndTint was matching id prefixes.
-    // But graffiti.json only has base definitions?
-    // Let's return the base graffiti from our map.
+    // Fallback: Use new generic skin/defIndex lookup if nedeed.
     return this.graffitiByDefIndex.get(normalizedKitId) ?? null;
   }
 
-  getByOriginalItemName(
-    itemName: string,
-    defIndex?: string | number | null
-  ): SkinSchema | null {
-    return this.findByOriginalKey(this.itemsByName, itemName, defIndex);
-  }
 
-  getByOriginalLocName(
-    locName: string,
-    defIndex?: string | number | null
-  ): SkinSchema | null {
-    return this.findByOriginalKey(this.itemsByName, locName, defIndex);
-  }
 
-  getByOriginalName(
-    originalName: string,
-    defIndex?: string | number | null
-  ): SkinSchema | null {
-    return this.findByOriginalKey(this.itemsByName, originalName, defIndex);
-  }
-
-  private findByOriginalKey(
-    map: Map<string, SkinSchema>,
-    key: string,
-    defIndex?: string | number | null
-  ): SkinSchema | null {
-    const item = map.get(key);
-    if (!item) {
-      return null;
-    }
-    if (defIndex === undefined || defIndex === null) {
-      return item;
-    }
-    const normalizedDefIndex = normalizeIndex(defIndex);
-    if (!normalizedDefIndex) {
-      return item;
-    }
-    // Strict check: if defIndex provided, it must match
-    if (normalizeIndex(item.def_index) === normalizedDefIndex) {
-      return item;
-    }
-    return null;
-  }
 }
 
 export const skinSchemaService = new SkinSchemaService();
