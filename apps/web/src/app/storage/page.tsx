@@ -195,7 +195,7 @@ export default function StoragePage() {
                             </span>
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
                               <span>{itemCount !== undefined ? `${itemCount} items` : "Click to load"}</span>
-                              {storage.storagePrice !== undefined && storage.storagePrice > 0 && (
+                              {storage.storagePrice && storage.storagePrice > 0 && (
                                 <>
                                   <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/50" />
                                   <span className="text-primary font-medium">
