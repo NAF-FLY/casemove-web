@@ -1,7 +1,10 @@
-
+import 'dotenv/config';
 import jwt from "jsonwebtoken";
 
-const secret = "super-secure-jwt-secret-key-for-local-development-12345";
+const secret = process.env.SUPABASE_JWT_SECRET;
+if (!secret) {
+  throw new Error("SUPABASE_JWT_SECRET not found in environment variables");
+}
 
 const serviceRolePayload = {
   iss: "supabase",
