@@ -1,29 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import InventoryTable from "@/components/inventory/InventoryTable";
-import AppHeader from "@/components/layout/AppHeader";
-import PageContainer from "@/components/layout/PageContainer";
-import Sidebar from "@/components/layout/Sidebar";
 import FloatingActionButton from "@/components/ui/FloatingActionButton";
+import TransferItemDrawer from "@/components/inventory/TransferItemDrawer";
 import Toolbar from "@/components/ui/Toolbar";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
-import { cn } from "@/lib/utils";
 import { useInventoryStore } from "@/store/inventory.store";
 import { useInventorySelection } from "@/store/inventorySelection.store";
 import { useSteamAccountsStore } from "@/store/steamAccounts.store";
 
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
-// ... existing imports
-
 export default function InventoryPage() {
   const selected = useInventorySelection((state) => state.selected);
   const selectedCount = selected.size;
   const activeAccountId = useSteamAccountsStore((state) => state.activeAccountId);
   const { items, loading, error, loadInventory, isHydrated, isGrouped, toggleGrouped } = useInventoryStore();
-  const [collapsed, setCollapsed] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedQuery = useDebouncedValue(
@@ -54,6 +49,13 @@ export default function InventoryPage() {
       return tokens.every((token) => searchText.includes(token));
     });
   }, [items, normalizedSearch]);
+
+  const storageUnits = useMemo(() => {
+    return items.filter((item) =>
+      item.marketHashName.startsWith("Storage Unit") ||
+      item.schema?.name?.startsWith("Storage Unit")
+    );
+  }, [items]);
   const emptyMessage = normalizedSearch
     ? "No items match your search."
     : "Inventory is empty or failed to load items.";
@@ -69,7 +71,6 @@ export default function InventoryPage() {
 
   const { accounts, loadAccounts } = useSteamAccountsStore();
 
-  // Ensure accounts are loaded (restore session if page refreshed)
   useEffect(() => {
     if (!activeAccountId && accounts.length === 0) {
       void loadAccounts();
@@ -82,28 +83,20 @@ export default function InventoryPage() {
     }
   }, [loadInventory, activeAccountId]);
 
-  useRefetchOnFocus(() => {
+  const handleRefetch = useCallback(() => {
     if (activeAccountId) {
       void loadInventory(activeAccountId);
     }
-  });
+  }, [activeAccountId, loadInventory]);
+
+  useRefetchOnFocus(handleRefetch);
 
   return (
-    <PageContainer className="px-0">
-      <div className="relative min-h-screen">
-        <Sidebar
-          collapsed={collapsed}
-          onToggle={() => setCollapsed((prev) => !prev)}
-        />
-        <div
-          className={cn(
-            "min-h-screen transition-[margin-left] duration-300 ease-in-out",
-            collapsed ? "ml-28" : "ml-72"
-          )}
-        >
-          <AppHeader />
-          <div className="mt-6 px-8 pb-8">
-            <div className="sticky top-20 z-20 -mx-8 bg-background/95 px-8 py-2 backdrop-blur-sm">
+    <div className="flex w-full items-start">
+      <div className="min-w-0 flex-1">
+        <div className="mt-0 pb-8">
+          <div className="sticky top-0 z-30 flex h-20 items-center border-b border-border/60 bg-[#151A25] px-8">
+            <div className="w-full">
               <Toolbar
               searchPlaceholder="Search items by name, type, or rarity..."
               searchValue={searchQuery}
@@ -123,34 +116,42 @@ export default function InventoryPage() {
               showGrouping
               isGrouped={isGrouped}
               onToggleGrouping={toggleGrouped}
-              groupingLabel="Группировать"
             />
             </div>
-            {error ? (
-              <p className="mt-4 text-sm text-destructive">{error}</p>
-            ) : null}
-            {loading || !isHydrated ? (
-              <p className="mt-4 text-sm text-muted-foreground bg-secondary/50 p-4 rounded-lg animate-pulse">
-                Loading inventory...
-              </p>
-            ) : (
-              <InventoryTable
-                items={filteredItems}
-                error={error}
-                loading={loading}
-                viewMode={viewMode}
-                emptyMessage={emptyMessage}
-                isGrouped={isGrouped}
-              />
-            )}
           </div>
-          <FloatingActionButton
-            label="Move selected →"
-            onClick={() => {}}
-            visible={selectedCount > 0}
-          />
+          <div className="px-8 mt-6">
+          {error ? (
+            <p className="mt-4 text-sm text-destructive">{error}</p>
+          ) : null}
+          {loading || !isHydrated ? (
+            <p className="mt-4 text-sm text-muted-foreground bg-secondary/50 p-4 rounded-lg animate-pulse">
+              Loading inventory...
+            </p>
+          ) : (
+            <InventoryTable
+              items={filteredItems}
+              error={error}
+              loading={loading}
+              viewMode={viewMode}
+              emptyMessage={emptyMessage}
+              isGrouped={isGrouped}
+            />
+          )}
         </div>
+        </div>
+        <FloatingActionButton
+          label="Move selected →"
+          onClick={() => setIsDrawerOpen(true)}
+          visible={selectedCount > 0}
+        />
       </div>
-    </PageContainer>
+      <TransferItemDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        selectedItems={items.filter(item => selected.has(item.id))}
+        allItems={items}
+        storageUnits={storageUnits}
+      />
+    </div>
   );
 }

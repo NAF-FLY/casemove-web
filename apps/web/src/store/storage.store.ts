@@ -3,10 +3,9 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import type { StateStorage } from "zustand/middleware";
 import { get, set, del } from "idb-keyval";
 
-import type { InventoryItemDTO } from "@casemove/shared-types";
+import type { StorageItemsCache } from "@/modules/storage/storage.types";
+import { useInventoryStore } from "@/store/inventory.store";
 
-import { fetchStorageItems } from "@/lib/api-client/storage";
-import { useInventoryStore } from "./inventory.store";
 
 // Custom storage adapter for IndexedDB (same as inventory.store.ts)
 const storage: StateStorage = {
@@ -21,82 +20,62 @@ const storage: StateStorage = {
   },
 };
 
-type StorageItemsCache = {
-  items: InventoryItemDTO[];
-  lastUpdated: number;
-};
-
 type StorageState = {
   activeStorageId: string | null;
   itemsByStorageId: Record<string, StorageItemsCache>;
+  loadingStorageId: string | null;
   loading: boolean;
   error: string | null;
+  warning: string | null;
   isHydrated: boolean;
+  accountId: string | null;
+  setAccountId: (id: string | null) => void;
   setActiveStorage: (id: string) => void;
-  loadStorageItems: (id: string, force?: boolean) => Promise<void>;
   invalidateStorage: (id: string) => void;
+  setLoading: (loading: boolean, storageId?: string | null) => void;
+  setError: (error: string | null) => void;
+  setWarning: (warning: string | null) => void;
+  setStorageItems: (id: string, data: StorageItemsCache) => void;
+  clearWarning: () => void;
 };
-
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes (storage items rarely change)
 
 export const useStorageStore = create<StorageState>()(
   persist(
     (set, get) => ({
       activeStorageId: null,
       itemsByStorageId: {},
+      loadingStorageId: null,
       loading: false,
       error: null,
+      warning: null,
       isHydrated: false,
-      setActiveStorage: (id) => set({ activeStorageId: id }),
-      loadStorageItems: async (id, force = false) => {
-        const { itemsByStorageId, loading } = get();
-        const now = Date.now();
-        const cached = itemsByStorageId[id];
-
-        // Check cache validity
-        if (!force && !loading && cached && now - cached.lastUpdated < CACHE_DURATION) {
-          return;
-        }
-
-        set({ loading: true, error: null });
-
-        try {
-          const items = await fetchStorageItems(id);
-
-          // Protect against overwriting valid cache with empty API response
-          // This can happen when Steam GC temporarily fails to return data
-          // Always protect, even on manual refresh - Steam GC can fail anytime
-          const existingCache = get().itemsByStorageId[id];
-          if (items.length === 0 && existingCache && existingCache.items.length > 0) {
-            console.warn(`[StorageStore] API returned empty for storage ${id}, keeping ${existingCache.items.length} cached items`);
-            set({ loading: false, error: "Steam returned empty response, showing cached data" });
-            return;
-          }
-
-          // Update inventory store immediately with the fresh value
-          // @ts-ignore - We know totalValue exists from the API response now, even if types aren't fully updated in all places yet
-          if (items.totalValue !== undefined) {
-             // @ts-ignore
-             const totalValue = items.totalValue as number;
-             useInventoryStore.getState().updateItem(id, { storagePrice: totalValue });
-          }
-          
-          const itemsList = Array.isArray(items) ? items : (items as any).items || [];
-
+      accountId: null,
+      setAccountId: (id) => {
+        const { accountId } = get();
+        if (id !== accountId) {
           set({
-            itemsByStorageId: {
-              ...get().itemsByStorageId,
-              [id]: { items: itemsList, lastUpdated: Date.now() }
-            },
-            loading: false
-          });
-        } catch (error) {
-          set({
+            accountId: id,
+            itemsByStorageId: {},
+            activeStorageId: null,
             loading: false,
-            error: error instanceof Error ? error.message : "Failed to load storage items"
+            error: null,
+            warning: null
           });
         }
       },
+      setActiveStorage: (id) => set({ activeStorageId: id }),
+      setLoading: (loading, storageId = null) =>
+        set({ loading, loadingStorageId: loading ? storageId : null }),
+      setError: (error) => set({ error }),
+      setWarning: (warning) => set({ warning }),
+      clearWarning: () => set({ warning: null }),
+      setStorageItems: (id, data) =>
+        set((state) => ({
+          itemsByStorageId: {
+            ...state.itemsByStorageId,
+            [id]: data
+          }
+        })),
       invalidateStorage: (id) => {
         const { itemsByStorageId } = get();
         const newCache = { ...itemsByStorageId };
@@ -109,10 +88,21 @@ export const useStorageStore = create<StorageState>()(
       storage: createJSONStorage(() => storage),
       partialize: (state) => ({
         itemsByStorageId: state.itemsByStorageId,
-        activeStorageId: state.activeStorageId
+        activeStorageId: state.activeStorageId,
+        accountId: state.accountId
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {
+          const inventoryState = useInventoryStore.getState();
+          for (const [storageId, cache] of Object.entries(state.itemsByStorageId)) {
+            const totalItems = cache.totalItems ?? cache.items.length;
+            if (totalItems > 0 || cache.totalValue) {
+              inventoryState.updateItem(storageId, {
+                storageItemsCount: totalItems,
+                storagePrice: cache.totalValue
+              });
+            }
+          }
           useStorageStore.setState({ isHydrated: true });
         }
       }

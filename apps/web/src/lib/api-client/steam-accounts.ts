@@ -1,4 +1,5 @@
 export type SteamAccountStatus = "idle" | "pending" | "connected" | "error";
+import { fetchWithAuth } from "./fetch-client";
 
 export type SteamAccount = {
   id: string;
@@ -39,7 +40,7 @@ type AccountResponse = {
 };
 
 export async function fetchSteamAccounts(): Promise<FetchAccountsResponse> {
-  const response = await fetch("/api/steam-accounts");
+  const response = await fetchWithAuth("/api/steam-accounts");
 
   if (!response.ok) {
     throw new Error("Failed to fetch steam accounts");
@@ -51,7 +52,7 @@ export async function fetchSteamAccounts(): Promise<FetchAccountsResponse> {
 export async function createSteamAccount(
   payload: CreateSteamAccountPayload
 ): Promise<SteamAccount> {
-  const response = await fetch("/api/steam-accounts", {
+  const response = await fetchWithAuth("/api/steam-accounts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -70,7 +71,7 @@ export async function connectSteamAccount(
   accountId: string,
   payload?: ConnectSteamAccountPayload
 ): Promise<SteamAccount> {
-  const response = await fetch(`/api/steam-accounts/${accountId}/connect`, {
+  const response = await fetchWithAuth(`/api/steam-accounts/${accountId}/connect`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload ?? {})
@@ -109,7 +110,7 @@ export async function tryAutoConnect(
 }
 
 export async function disconnectSteamAccount(accountId: string): Promise<void> {
-  const response = await fetch(`/api/steam-accounts/${accountId}/disconnect`, {
+  const response = await fetchWithAuth(`/api/steam-accounts/${accountId}/disconnect`, {
     method: "POST"
   });
 
@@ -119,18 +120,23 @@ export async function disconnectSteamAccount(accountId: string): Promise<void> {
 }
 
 export async function switchSteamAccount(accountId: string): Promise<void> {
-  const response = await fetch(`/api/steam-accounts/${accountId}/switch`, {
+  const response = await fetchWithAuth(`/api/steam-accounts/${accountId}/switch`, {
     method: "POST"
   });
 
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
+    if (data.requiresPassword) {
+      const error = new Error(data.message || "Password required");
+      (error as Error & { requiresPassword?: boolean }).requiresPassword = true;
+      throw error;
+    }
     throw new Error(data.message || "Failed to switch account");
   }
 }
 
 export async function deleteSteamAccount(accountId: string): Promise<void> {
-  const response = await fetch(`/api/steam-accounts/${accountId}`, {
+  const response = await fetchWithAuth(`/api/steam-accounts/${accountId}`, {
     method: "DELETE"
   });
 

@@ -5,7 +5,16 @@ import { usePathname } from "next/navigation";
 import { Archive, ChevronLeft, ChevronRight, Home, Package } from "lucide-react";
 
 import LogoutButton from "@/components/auth/LogoutButton";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth.store";
+
+const statusStyles = {
+  connected: "text-primary",
+  error: "text-destructive",
+  idle: "text-muted-foreground",
+  pending: "text-muted-foreground"
+} as const;
 
 const navigation = [
   { label: "Профиль", icon: Home, href: "/profile" },
@@ -26,12 +35,23 @@ type SidebarProps = {
 
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const steamStatus = useAuthStore((state) => state.steamStatus);
+  const userEmail = useAuthStore((state) => state.userEmail);
+
+  const statusText =
+    steamStatus === "connected"
+      ? "Steam: Connected"
+      : steamStatus === "error"
+        ? "Steam: Error"
+        : steamStatus === "pending"
+          ? "Steam: Connecting..."
+          : "Steam: Idle";
 
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 z-40 flex min-h-screen flex-col border-r border-border/60 transition-[width,background-color] duration-300 ease-in-out",
-        collapsed ? "w-28 bg-background" : "w-72 bg-card"
+        "fixed left-0 top-0 z-40 flex min-h-screen flex-col border-r border-border/60 bg-[#151A25] transition-[width] duration-300 ease-in-out",
+        collapsed ? "w-28" : "w-72"
       )}
     >
       <div
@@ -88,21 +108,6 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </div>
           </div>
         </div>
-        <button
-          aria-label={collapsed ? "Развернуть меню" : "Свернуть меню"}
-          className={cn(
-            "absolute right-0 top-1/2 flex -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-lg border border-border/60 bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-            collapsed ? "h-8 w-8" : "h-9 w-9"
-          )}
-          onClick={onToggle}
-          type="button"
-        >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
-        </button>
       </div>
       <nav
         className={cn(
@@ -168,7 +173,47 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           );
         })}
       </nav>
-      <div className={cn("mt-auto pb-6", collapsed ? "px-2" : "px-4")}>
+      <div className={cn("mt-auto flex flex-col gap-2 pb-6", collapsed ? "px-2" : "px-4")}>
+        <div
+          className={cn(
+            "flex flex-col gap-2 overflow-hidden transition-[opacity,height] duration-300 ease-in-out",
+            collapsed ? "h-0 opacity-0" : "h-auto opacity-100"
+          )}
+        >
+          <Badge
+            className="flex w-full justify-center rounded-xl border border-border/60 bg-card py-1.5 text-xs font-medium"
+            variant="outline"
+          >
+            <span className={statusStyles[steamStatus]}>{statusText}</span>
+          </Badge>
+          <div className="px-1 text-center text-xs text-muted-foreground">
+            {userEmail ?? "Account"}
+          </div>
+        </div>
+
+        <button
+          className={cn(
+             "flex w-full items-center rounded-xl border border-border/60 bg-card text-muted-foreground transition-all hover:bg-muted hover:text-foreground",
+             collapsed ? "justify-center p-2" : "gap-3 px-3 py-2"
+          )}
+          onClick={onToggle}
+          type="button"
+        >
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+             <ChevronLeft className="h-4 w-4" />
+          )}
+          <span
+            className={cn(
+              "overflow-hidden whitespace-nowrap transition-[max-width,opacity] duration-300 ease-in-out",
+              collapsed ? "max-w-0 opacity-0" : "max-w-[100px] opacity-100"
+            )}
+          >
+            Свернуть
+          </span>
+        </button>
+
         <LogoutButton collapsed={collapsed} />
       </div>
     </aside>

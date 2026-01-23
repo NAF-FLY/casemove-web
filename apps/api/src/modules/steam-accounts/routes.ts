@@ -230,14 +230,6 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
       }
 
       try {
-        // Disconnect all other accounts for this user to ensure single active session
-        steamManager.disconnectAllForUser(userId);
-        await supabaseAdmin
-          .from("steam_accounts")
-          .update({ status: "idle" })
-          .eq("user_id", userId)
-          .eq("status", "connected");
-
         const client = await steamManager.connect(
           userId,
           inserted.id,
@@ -266,6 +258,14 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
           .eq("user_id", userId)
           .select(ACCOUNT_SELECT_FIELDS)
           .single();
+
+        steamManager.disconnectAllExcept(userId, inserted.id);
+        await supabaseAdmin
+          .from("steam_accounts")
+          .update({ status: "idle" })
+          .eq("user_id", userId)
+          .neq("id", inserted.id)
+          .eq("status", "connected");
 
         await supabaseAdmin
           .from("user_profiles")
@@ -336,14 +336,6 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
       if (savedToken) {
         try {
           console.log(`Attempting token-based reconnect for account ${account.id}`);
-          
-          // Disconnect all other accounts for this user to ensure single active session
-          steamManager.disconnectAllForUser(userId);
-          await supabaseAdmin
-            .from("steam_accounts")
-            .update({ status: "idle" })
-            .eq("user_id", userId)
-            .eq("status", "connected");
 
           const client = await steamManager.connect(
             userId,
@@ -371,6 +363,14 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
             .eq("user_id", userId)
             .select(ACCOUNT_SELECT_FIELDS)
             .single();
+
+          steamManager.disconnectAllExcept(userId, account.id);
+          await supabaseAdmin
+            .from("steam_accounts")
+            .update({ status: "idle" })
+            .eq("user_id", userId)
+            .neq("id", account.id)
+            .eq("status", "connected");
 
           await supabaseAdmin
             .from("user_profiles")
@@ -405,14 +405,6 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
       }
 
       try {
-        // Disconnect all other accounts for this user to ensure single active session
-        steamManager.disconnectAllForUser(userId);
-        await supabaseAdmin
-          .from("steam_accounts")
-          .update({ status: "idle" })
-          .eq("user_id", userId)
-          .eq("status", "connected");
-
         const client = await steamManager.connect(
           userId,
           account.id,
@@ -440,6 +432,14 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
           .eq("user_id", userId)
           .select(ACCOUNT_SELECT_FIELDS)
           .single();
+
+        steamManager.disconnectAllExcept(userId, account.id);
+        await supabaseAdmin
+          .from("steam_accounts")
+          .update({ status: "idle" })
+          .eq("user_id", userId)
+          .neq("id", account.id)
+          .eq("status", "connected");
 
         await supabaseAdmin
           .from("user_profiles")
@@ -525,10 +525,59 @@ export async function registerSteamAccountsRoutes(app: FastifyInstance) {
       const { id } = request.params;
 
       if (!steamManager.hasClient(userId, id)) {
-        return reply.code(409).send({ message: "Steam account not connected" });
+        const { data: account } = await supabaseAdmin
+          .from("steam_accounts")
+          .select("steam_login")
+          .eq("id", id)
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (!account?.steam_login) {
+          return reply.code(404).send({ message: "Account not found" });
+        }
+
+        const refreshToken = await getRefreshToken(id);
+        if (!refreshToken) {
+          return reply.code(401).send({
+            message: "Session expired. Password required.",
+            requiresPassword: true
+          });
+        }
+
+        try {
+          await steamManager.connect(
+            userId,
+            id,
+            {
+              username: account.steam_login,
+              refreshToken
+            },
+            async (token) => {
+              await saveRefreshToken(id, token);
+            }
+          );
+
+          await supabaseAdmin
+            .from("steam_accounts")
+            .update({ status: "connected", last_login_at: new Date().toISOString() })
+            .eq("id", id)
+            .eq("user_id", userId);
+        } catch (error) {
+          return reply.code(401).send({
+            message: "Session expired. Password required.",
+            requiresPassword: true
+          });
+        }
       }
 
       steamManager.setActiveAccount(userId, id);
+      steamManager.disconnectAllExcept(userId, id);
+      await supabaseAdmin
+        .from("steam_accounts")
+        .update({ status: "idle" })
+        .eq("user_id", userId)
+        .neq("id", id)
+        .eq("status", "connected");
       await supabaseAdmin
         .from("user_profiles")
         .update({ active_steam_account_id: id })

@@ -15,6 +15,7 @@ export interface ISteamManager {
   setActiveAccount(userId: string, steamAccountId: string): void;
   disconnect(userId: string, steamAccountId: string): void;
   disconnectAllForUser(userId: string): void;
+  disconnectAllExcept(userId: string, steamAccountId: string): void;
 }
 
 export class SteamManager implements ISteamManager {
@@ -64,7 +65,13 @@ export class SteamManager implements ISteamManager {
           client.setRefreshTokenCallback(onRefreshToken);
         }
         
-        await client.login(credentials);
+        // Timeout wrapper for login
+        const loginPromise = client.login(credentials);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Steam login timed out after 30s")), 30000)
+        );
+        
+        await Promise.race([loginPromise, timeoutPromise]);
         userClients.set(steamAccountId, client);
 
         if (!this.activeAccountIdByUser.has(userId)) {
@@ -165,6 +172,30 @@ export class SteamManager implements ISteamManager {
 
     this.clients.delete(userId);
     this.activeAccountIdByUser.delete(userId);
+  }
+
+  disconnectAllExcept(userId: string, steamAccountId: string): void {
+    const userClients = this.clients.get(userId);
+
+    if (!userClients) {
+      return;
+    }
+
+    for (const [accountId, client] of userClients.entries()) {
+      if (accountId === steamAccountId) {
+        continue;
+      }
+      client.logOff();
+      userClients.delete(accountId);
+    }
+
+    if (userClients.size === 0) {
+      this.clients.delete(userId);
+      this.activeAccountIdByUser.delete(userId);
+      return;
+    }
+
+    this.activeAccountIdByUser.set(userId, steamAccountId);
   }
 }
 

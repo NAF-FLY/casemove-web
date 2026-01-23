@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { createWithEqualityFn } from "zustand/traditional";
 
 import type {
   ConnectSteamAccountPayload,
@@ -31,13 +31,14 @@ type SteamAccountsState = {
   ) => Promise<void>;
   tryAutoConnectAccount: (accountId: string) => Promise<boolean>;
   disconnectAccount: (accountId: string) => Promise<void>;
-  switchAccount: (accountId: string) => Promise<void>;
+  switchAccount: (accountId: string) => Promise<"ok" | "passwordRequired" | "error">;
   deleteAccount: (accountId: string) => Promise<void>;
   clearAddError: () => void;
   clearListError: () => void;
 };
 
-export const useSteamAccountsStore = create<SteamAccountsState>((set, get) => ({
+export const useSteamAccountsStore = createWithEqualityFn<SteamAccountsState>()(
+  (set, get) => ({
   accounts: [],
   activeAccountId: null,
   loading: false,
@@ -181,17 +182,31 @@ export const useSteamAccountsStore = create<SteamAccountsState>((set, get) => ({
 
     try {
       await switchSteamAccount(accountId);
+      const { accounts } = get();
 
       set({
+        accounts: accounts.map((acc) =>
+          acc.id === accountId
+            ? { ...acc, status: "connected" as const }
+            : { ...acc, status: "idle" as const }
+        ),
         activeAccountId: accountId,
         actionLoading: null
       });
+      return "ok";
     } catch (error) {
+      const requiresPassword = (error as Error & { requiresPassword?: boolean })
+        .requiresPassword;
+
       set({
         actionLoading: null,
         listError:
           error instanceof Error ? error.message : "Failed to switch account"
       });
+      if (requiresPassword) {
+        return "passwordRequired";
+      }
+      return "error";
     }
   },
 
@@ -220,4 +235,3 @@ export const useSteamAccountsStore = create<SteamAccountsState>((set, get) => ({
   clearAddError: () => set({ addError: null }),
   clearListError: () => set({ listError: null })
 }));
-

@@ -38,10 +38,25 @@ export const priceService = {
     });
 
     // Fetch from DB
-    const { data, error } = await supabaseAdmin
-      .from("steam_market_prices")
-      .select("market_hash_name, price")
-      .in("market_hash_name", marketHashNames);
+    // Fetch from DB with timeout
+    let data, error;
+    try {
+      const fetchPromise = supabaseAdmin
+        .from("steam_market_prices")
+        .select("market_hash_name, price")
+        .in("market_hash_name", marketHashNames)
+        .then(res => ({ data: res.data, error: res.error }));
+
+      const timeoutPromise = new Promise<{ data: null, error: any }>((resolve) => 
+        setTimeout(() => resolve({ data: null, error: new Error("DB fetch timed out") }), 15000)
+      );
+
+      const result = await Promise.race([fetchPromise, timeoutPromise]);
+      data = result.data;
+      error = result.error;
+    } catch (err) {
+      error = err;
+    }
 
     if (error) {
       console.error("Failed to fetch prices from DB:", error);
@@ -98,41 +113,57 @@ export const priceService = {
       // resulting in { "hash_name": price_float, ... } is most efficient.
       // Let's try standard compact first as it's smallest.
 
-      const response = await fetch(
-        `https://api.steamapis.com/market/items/730?api_key=${STEAM_APIS_KEY}&format=compact`
-      );
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
 
-      if (!response.ok) {
-        throw new Error(`SteamAPIs error: ${response.status} ${response.statusText}`);
-      }
-
-      const data = (await response.json()) as Record<string, number>;
-      
-      // Transform to DB rows
-      // Batch upsert in chunks to avoid request size limits (Supabase limit is usually huge, but safe to chunk 1000s)
-      const rows = Object.entries(data).map(([name, price]) => ({
-        market_hash_name: name,
-        price: price,
-        currency: 'USD',
-        updated_at: new Date().toISOString()
-      }));
-
-      console.log(`Fetched ${rows.length} prices from SteamAPIs. Upserting...`);
-
-      // Upsert in batches of 3000
-      const batchSize = 3000;
-      for (let i = 0; i < rows.length; i += batchSize) {
-        const batch = rows.slice(i, i + batchSize);
-        const { error } = await supabaseAdmin
-          .from("steam_market_prices")
-          .upsert(batch, { onConflict: "market_hash_name" });
+      try {
+        const response = await fetch(
+          `https://api.steamapis.com/market/items/730?api_key=${STEAM_APIS_KEY}&format=compact`,
+          { signal: controller.signal }
+        );
         
-        if (error) {
-          console.error("Error upserting price batch:", error);
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`SteamAPIs error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = (await response.json()) as Record<string, number>;
+        
+        // Transform to DB rows
+        // Batch upsert in chunks to avoid request size limits (Supabase limit is usually huge, but safe to chunk 1000s)
+        const rows = Object.entries(data).map(([name, price]) => ({
+          market_hash_name: name,
+          price: price,
+          currency: 'USD',
+          updated_at: new Date().toISOString()
+        }));
+
+        console.log(`Fetched ${rows.length} prices from SteamAPIs. Upserting...`);
+
+        // Upsert in batches of 3000
+        const batchSize = 3000;
+        for (let i = 0; i < rows.length; i += batchSize) {
+          const batch = rows.slice(i, i + batchSize);
+          const { error } = await supabaseAdmin
+            .from("steam_market_prices")
+            .upsert(batch, { onConflict: "market_hash_name" });
+          
+          if (error) {
+            console.error("Error upserting price batch:", error);
+          }
+        }
+        
+        console.log("Price update complete.");
+
+      } catch (innerErr: any) {
+        clearTimeout(timeoutId);
+        if (innerErr.name === 'AbortError' || innerErr.code === 'ETIMEDOUT') {
+           console.warn("SteamAPIs price update timed out after 30s");
+        } else {
+           throw innerErr;
         }
       }
-      
-      console.log("Price update complete.");
 
     } catch (err) {
       console.error("Error performing price update:", err);

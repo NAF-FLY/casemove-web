@@ -16,15 +16,32 @@ export async function GET(request: Request, { params }: Params) {
   const token = cookieStore.get(cookieName)?.value;
   const authHeader =
     request.headers.get("authorization") ?? (token ? `Bearer ${token}` : null);
-  const response = await fetch(`${baseUrl}/storage/${id}`, {
-    cache: "no-store",
-    headers: authHeader ? { Authorization: authHeader } : undefined
-  });
+  // Forward forceRefresh query param
+  const url = new URL(request.url);
+  const forceRefresh = url.searchParams.get("forceRefresh");
+  const query = forceRefresh ? "?forceRefresh=true" : "";
 
-  if (!response.ok) {
-    return NextResponse.json({ items: [] }, { status: response.status });
+  try {
+    const response = await fetch(`${baseUrl}/storage/${id}${query}`, {
+      cache: "no-store",
+      headers: authHeader ? { Authorization: authHeader } : undefined,
+      signal: AbortSignal.timeout(60000) // 60s timeout
+    });
+
+    if (!response.ok) {
+        // If 429, try to get body
+        if (response.status === 429) {
+           const data = await response.json().catch(() => ({}));
+           return NextResponse.json(data, { status: 429 });
+        }
+      return NextResponse.json({ items: [] }, { status: response.status });
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Storage proxy error:", error);
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ message, items: [] }, { status: 504 });
   }
-
-  const data = await response.json();
-  return NextResponse.json(data);
 }

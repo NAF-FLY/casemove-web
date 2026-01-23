@@ -75,6 +75,31 @@ export const useAuthStore = create<AuthState>((set) => ({
   initFromSession: async () => {
     set({ isInitialized: false });
     try {
+      // Set up auth state change listener
+      supabase.auth.onAuthStateChange((event, session) => {
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          if (session) {
+            setAuthCookie(session.access_token);
+            set({
+              isAuthenticated: true,
+              userEmail: session.user.email ?? null,
+              steamStatus: "idle",
+              error: null
+            });
+          }
+        } else if (event === "SIGNED_OUT") {
+          clearAuthCookie();
+          set({
+            isAuthenticated: false,
+            userEmail: null,
+            steamStatus: "idle",
+            error: null
+          });
+        } else if (event === "USER_UPDATED" && session) {
+          set({ userEmail: session.user.email ?? null });
+        }
+      });
+
       const { data, error } = await supabase.auth.getSession();
 
       if (!error && data.session) {

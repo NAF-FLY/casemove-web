@@ -33,7 +33,7 @@ export interface ISteamClient {
   getInventoryViaCommunity(): Promise<SteamInventoryItem[]>;
   getStorageUnits(): Promise<StorageUnitDTO[]>;
   getStorageItems(storageId: string): Promise<SteamInventoryItem[]>;
-  moveItems(payload: MoveItemsPayload): Promise<void>;
+  moveItems(payload: MoveItemsPayload): Promise<{ itemId: string; ok: boolean; error?: string }[]>;
   getPersonaName(): string | null;
   getProfileData(): Promise<SteamProfileData | null>;
   getTradeUrl(): Promise<{ url: string; token: string } | null>;
@@ -55,6 +55,8 @@ export class SteamClient implements ISteamClient {
   private itemSchemaByDefIndex: Map<string, CsgItemSchemaItem> | null = null;
   private personaName: string | null = null;
   private onRefreshToken?: (token: string) => void;
+  // Serialize GC actions to avoid overlapping requests (GC is sensitive to concurrency)
+  private gcQueue: Promise<void> = Promise.resolve();
 
   constructor() {
     this.client = new SteamUser();
@@ -62,6 +64,17 @@ export class SteamClient implements ISteamClient {
       console.warn("SteamUser global error:", err.message);
     });
     this.community = new SteamCommunity();
+    this.gc = new GlobalOffensive(this.client);
+    
+    this.gc.on("connectedToGC", () => {
+      this.gcReady = true;
+      void this.loadItemSchema();
+    });
+
+    this.gc.on("disconnectedFromGC", () => {
+      this.gcReady = false;
+    });
+
   }
 
   setRefreshTokenCallback(callback: (token: string) => void): void {
@@ -103,13 +116,9 @@ export class SteamClient implements ISteamClient {
     });
 
     // Request web session
+    // Request web session
     this.client.webLogOn();
 
-    this.gc = new GlobalOffensive(this.client);
-    this.gc.once("connectedToGC", () => {
-      this.gcReady = true;
-      void this.loadItemSchema();
-    });
     this.client.gamesPlayed([730]);
   }
 
@@ -122,6 +131,7 @@ export class SteamClient implements ISteamClient {
     this.itemSchemaPromise = null;
     this.itemSchemaByDefIndex = null;
     this.personaName = null;
+    this.gcQueue = Promise.resolve(); // Reset GC queue
   }
 
   async getInventory(): Promise<SteamInventoryItem[]> {
@@ -132,7 +142,7 @@ export class SteamClient implements ISteamClient {
     // Try GC inventory first (better data quality, e.g. floats)
     try {
       console.log("Fetching inventory via GC");
-      return await this.waitForGcInventory(2000); // Short timeout because if we are connected, it's instant
+      return await this.waitForGcInventory(5000); // Increased timeout to 5s for better reliability
     } catch (err) {
       console.warn("GC inventory fetch failed/timed out, falling back to Steam Community API", err);
     }
@@ -195,58 +205,128 @@ export class SteamClient implements ISteamClient {
   }
 
   async getStorageItems(storageId: string): Promise<SteamInventoryItem[]> {
-    if (!this.gcReady || !this.gc) {
-      throw new Error("Steam GC not ready");
-    }
+    return this.enqueueGcTask(async () => {
+      await this.waitForGcReady(10000);
+      // Re-check readiness inside the lock execution
+      if (!this.gcReady || !this.gc) {
+        throw new Error("Steam GC not ready");
+      }
 
-    return new Promise((resolve, reject) => {
-      const items: SteamInventoryItem[] = [];
-      const timeoutMs = 30000; // 30 seconds timeout for large storages
-      
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const handleItemAcquired = (item: any) => {
-        if (item.casket_id === storageId) {
-          items.push(item as SteamInventoryItem);
-        }
-      };
-      
-      const cleanup = () => {
+      return new Promise<SteamInventoryItem[]>((resolve, reject) => {
+        const items: SteamInventoryItem[] = [];
+        const timeoutMs = 30000; // 30 seconds timeout for large storages
+        
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (this.gc as any).removeListener("itemAcquired", handleItemAcquired);
-      };
-      
-      const timeoutId = setTimeout(() => {
-        cleanup();
-        // Return whatever we collected so far
-        console.log(`[Storage] Timeout reached for storage ${storageId}, returning ${items.length} items`);
-        resolve(items);
-      }, timeoutMs);
-      
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (this.gc as any).on("itemAcquired", handleItemAcquired);
+        const handleItemAcquired = (item: any) => {
+          if (item.casket_id === storageId) {
+            items.push(item as SteamInventoryItem);
+          }
+        };
+        
+        const cleanup = () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (this.gc as any).removeListener("itemAcquired", handleItemAcquired);
+        };
+        
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          if (items.length === 0) {
+            console.error(`[Storage] Timeout reached for storage ${storageId}, failed to load items`);
+            reject(new Error("Loading casket contents timed out"));
+          } else {
+            // Return whatever we collected so far
+            console.log(`[Storage] Timeout reached for storage ${storageId}, returning ${items.length} partial items`);
+            resolve(items);
+          }
 
-      
-      // getCasketContents triggers itemAcquired events for each item
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (this.gc as any).getCasketContents(storageId, (err: Error | null) => {
-        clearTimeout(timeoutId);
-        cleanup();
+        }, timeoutMs);
         
-        if (err) {
-          console.error(`[Storage] Error fetching contents for ${storageId}:`, err);
-          reject(err);
-          return;
-        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gc as any).on("itemAcquired", handleItemAcquired);
+
         
-        console.log(`[Storage] Loaded ${items.length} items from storage ${storageId}`);
-        resolve(items);
+        // getCasketContents triggers itemAcquired events for each item
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gc as any).getCasketContents(storageId, (err: Error | null) => {
+          // If we already timed out or succeeded, do nothing (cleanup handled)
+          // But we should clear timeout if it's still running
+          // However, we rely on timeoutId closure. 
+          // If we are here, it means the callback fired.
+          
+          // NOTE: We do NOT clear timeout immediately here because itemAcquired events 
+          // might still be flowing in (async) even after callback if the lib behaves that way?
+          // Actually, usually callback means "done". 
+          // But for GlobalOffensive, itemAcquired fires DURING the process.
+          // Correct flow: 
+          // 1. Call getCasketContents
+          // 2. itemAcquired fires N times
+          // 3. Callback fires
+          
+          clearTimeout(timeoutId);
+          cleanup();
+          
+          if (err) {
+            console.error(`[Storage] Error fetching contents for ${storageId}:`, err);
+            // Even if error, if we got some items, maybe resolve?
+            // Usually error means "failed to start" or "disconnected".
+            if (items.length > 0) {
+               console.warn(`[Storage] Error but had ${items.length} items, returning partial.`);
+               resolve(items);
+            } else {
+               reject(err);
+            }
+            return;
+          }
+          
+          console.log(`[Storage] Loaded ${items.length} items from storage ${storageId}`);
+          resolve(items);
+        });
       });
     });
   }
 
 
-  async moveItems(_: MoveItemsPayload): Promise<void> {
-    throw new Error("Not implemented");
+  async moveItems(payload: MoveItemsPayload): Promise<{ itemId: string; ok: boolean; error?: string }[]> {
+    if (payload.from !== "inventory" || payload.to !== "storage") {
+      throw new Error("Only inventory -> storage transfers are supported");
+    }
+
+    if (!payload.storageId) {
+      throw new Error("Storage ID is required");
+    }
+
+    if (!payload.itemIds.length) {
+      return [];
+    }
+
+    const results: { itemId: string; ok: boolean; error?: string }[] = [];
+
+    for (const itemId of payload.itemIds) {
+      try {
+        await this.enqueueGcTask(async () => {
+          await this.waitForGcReady(10000);
+          if (!this.gcReady || !this.gc) {
+            throw new Error("Steam GC not ready");
+          }
+
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (this.gc as any).addToCasket(payload.storageId, itemId);
+          } catch (err) {
+            throw err;
+          }
+
+          await this.waitForItemRemoved(itemId, 20000);
+        });
+
+        results.push({ itemId, ok: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to move item";
+        results.push({ itemId, ok: false, error: message });
+      }
+    }
+
+    return results;
   }
 
   getPersonaName(): string | null {
@@ -431,6 +511,91 @@ export class SteamClient implements ISteamClient {
 
       this.gc.once("connectedToGC", handleConnected);
       this.gc.once("disconnectedFromGC", handleDisconnected);
+    });
+  }
+
+  private waitForGcReady(timeoutMs = 10000): Promise<void> {
+    if (!this.gc) {
+      return Promise.reject(new Error("Steam GC not initialized"));
+    }
+
+    if (this.gcReady) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error("Steam GC not ready"));
+      }, timeoutMs);
+
+      const handleConnected = () => {
+        cleanup();
+        resolve();
+      };
+      const handleDisconnected = () => {
+        cleanup();
+        reject(new Error("Steam GC disconnected"));
+      };
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        this.gc.removeListener("connectedToGC", handleConnected);
+        this.gc.removeListener("disconnectedFromGC", handleDisconnected);
+      };
+
+      this.gc.once("connectedToGC", handleConnected);
+      this.gc.once("disconnectedFromGC", handleDisconnected);
+    });
+  }
+
+  private enqueueGcTask<T>(task: () => Promise<T>): Promise<T> {
+    const execution = this.gcQueue.then(task);
+    this.gcQueue = execution.then(() => undefined).catch(() => undefined);
+    return execution;
+  }
+
+  private waitForItemRemoved(itemId: string, timeoutMs = 20000): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const gc = this.gc as any;
+      if (!gc) {
+        reject(new Error("Steam GC not initialized"));
+        return;
+      }
+
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error("Timed out waiting for item removal"));
+      }, timeoutMs);
+
+      const handleRemoved = (item: { id?: string; assetid?: string }) => {
+        const removedId = String(item?.id ?? item?.assetid ?? "");
+        if (removedId === String(itemId)) {
+          cleanup();
+          resolve();
+        }
+      };
+
+      const handleCustomization = (itemIds: string[] | undefined, notificationType: number) => {
+        const casketAdded = (GlobalOffensive as typeof GlobalOffensive & {
+          ItemCustomizationNotification?: { CasketAdded?: number };
+        }).ItemCustomizationNotification?.CasketAdded;
+        if (casketAdded !== undefined && notificationType === casketAdded) {
+          if (Array.isArray(itemIds) && itemIds.some((id) => String(id) === String(itemId))) {
+            cleanup();
+            resolve();
+          }
+        }
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        gc.removeListener("itemRemoved", handleRemoved);
+        gc.removeListener("itemCustomizationNotification", handleCustomization);
+      };
+
+      gc.on("itemRemoved", handleRemoved);
+      gc.on("itemCustomizationNotification", handleCustomization);
     });
   }
 

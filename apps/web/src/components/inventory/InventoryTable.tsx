@@ -68,7 +68,7 @@ export default function InventoryTable({
 
   if (!isLoading && !hasError && tableItems.length === 0) {
     return (
-      <TableContainer className="mt-6">
+      <TableContainer>
         <div className="px-6 py-6 text-sm text-muted-foreground">
           {emptyMessage}
         </div>
@@ -77,7 +77,7 @@ export default function InventoryTable({
   }
 
   return (
-    <TableContainer className="mt-6">
+    <TableContainer>
       {isListView ? (
         <InventoryListView items={displayItems} onToggle={handleToggle} />
       ) : (

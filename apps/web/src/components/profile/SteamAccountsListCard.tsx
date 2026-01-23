@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import ConnectModal from "./ConnectModal";
+
 import { useRefetchOnFocus } from "@/hooks/useRefetchOnFocus";
 
 import { useSteamAccountsStore } from "@/store/steamAccounts.store";
@@ -259,7 +261,17 @@ export default function SteamAccountsListCard() {
   };
 
   const handleSwitch = (accountId: string) => {
-    void switchAccount(accountId);
+    void (async () => {
+      const result = await switchAccount(accountId);
+      if (result === "passwordRequired") {
+        setConnectModal({
+          isOpen: true,
+          accountId,
+          password: "",
+          twoFactorCode: ""
+        });
+      }
+    })();
   };
 
   const handleDelete = (accountId: string) => {
@@ -279,62 +291,72 @@ export default function SteamAccountsListCard() {
   }
 
   return (
-    <Card className="overflow-hidden border border-border/60 bg-card/80">
-      <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 px-6 py-5">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">
-            Steam Аккаунты
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {accounts.length === 0
-              ? "Добавьте ваш первый Steam аккаунт"
-              : `${accounts.length} ${accounts.length === 1 ? "аккаунт" : "аккаунтов"}`}
-          </p>
-        </div>
-        <Button
-          className="h-9 px-4"
-          isIconOnly={false}
-          radius="lg"
-          size="sm"
-          variant="bordered"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </CardHeader>
-      <CardBody className="space-y-3 px-6 py-5">
-        {listError && (
-          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            {listError}
-          </div>
-        )}
-
-        {accounts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="mb-4 rounded-xl border border-border/60 bg-muted/20 p-4">
-              <User className="h-8 w-8 text-muted-foreground" />
-            </div>
+    <>
+      <Card className="overflow-hidden border border-border/60 bg-card/80">
+        <CardHeader className="flex flex-row items-center justify-between border-b border-border/60 px-6 py-5">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">
+              Steam Аккаунты
+            </h2>
             <p className="text-sm text-muted-foreground">
-              У вас пока нет добавленных Steam аккаунтов.
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground/70">
-              Используйте форму ниже для добавления аккаунта.
+              {accounts.length === 0
+                ? "Добавьте ваш первый Steam аккаунт"
+                : `${accounts.length} ${accounts.length === 1 ? "аккаунт" : "аккаунтов"}`}
             </p>
           </div>
-        ) : (
-          accounts.map((account) => (
-            <SteamAccountRow
-              key={account.id}
-              account={account}
-              actionLoading={actionLoading}
-              isActive={account.id === activeAccountId}
-              onConnect={handleConnect}
-              onDelete={handleDelete}
-              onDisconnect={handleDisconnect}
-              onSwitch={handleSwitch}
-            />
-          ))
-        )}
-      </CardBody>
-    </Card>
+          <Button
+            className="h-9 px-4"
+            isIconOnly={false}
+            radius="lg"
+            size="sm"
+            variant="bordered"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+        <CardBody className="space-y-3 px-6 py-5">
+          {listError && (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {listError}
+            </div>
+          )}
+
+          {accounts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <div className="mb-4 rounded-xl border border-border/60 bg-muted/20 p-4">
+                <User className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                У вас пока нет добавленных Steam аккаунтов.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground/70">
+                Используйте форму ниже для добавления аккаунта.
+              </p>
+            </div>
+          ) : (
+            accounts.map((account) => (
+              <SteamAccountRow
+                key={account.id}
+                account={account}
+                actionLoading={actionLoading}
+                isActive={account.id === activeAccountId}
+                onConnect={handleConnect}
+                onDelete={handleDelete}
+                onDisconnect={handleDisconnect}
+                onSwitch={handleSwitch}
+              />
+            ))
+          )}
+        </CardBody>
+      </Card>
+
+      <ConnectModal
+        accountId={connectModal.accountId}
+        isOpen={connectModal.isOpen}
+        onOpenChange={(isOpen) =>
+          setConnectModal((prev) => ({ ...prev, isOpen }))
+        }
+      />
+    </>
   );
 }

@@ -17,15 +17,22 @@ export async function GET(request: Request) {
     ? `${baseUrl}/inventory?forceRefresh=true` 
     : `${baseUrl}/inventory`;
   
-  const response = await fetch(backendUrl, {
-    cache: "no-store",
-    headers: authHeader ? { Authorization: authHeader } : undefined
-  });
+  try {
+    const response = await fetch(backendUrl, {
+      cache: "no-store",
+      headers: authHeader ? { Authorization: authHeader } : undefined,
+      signal: AbortSignal.timeout(60000) // 60s timeout
+    });
 
-  if (!response.ok) {
-    return NextResponse.json({ items: [] }, { status: response.status });
+    if (!response.ok) {
+      return NextResponse.json({ items: [] }, { status: response.status });
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Inventory proxy error:", error);
+    const message = error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ message, items: [] }, { status: 504 }); // 504 for timeout/fetch failure
   }
-
-  const data = await response.json();
-  return NextResponse.json(data);
 }

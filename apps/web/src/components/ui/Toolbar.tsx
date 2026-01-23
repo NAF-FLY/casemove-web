@@ -17,8 +17,9 @@ type ToolbarProps = {
   searchValue?: string;
   onSearchChange?: (value: string) => void;
   showRefresh?: boolean;
-  refreshLabel?: string;
+  refreshLabel?: string | React.ReactNode;
   refreshing?: boolean;
+  refreshDisabled?: boolean;
   onRefreshClick?: () => void;
   showFilter?: boolean;
   filterLabel?: string;
@@ -30,7 +31,7 @@ type ToolbarProps = {
   onViewToggle?: () => void;
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
-  viewLabel?: string;
+  viewLabel?: string; 
   showGrouping?: boolean;
   isGrouped?: boolean;
   onToggleGrouping?: (value: boolean) => void;
@@ -55,6 +56,7 @@ export default function Toolbar({
   showRefresh = false,
   refreshLabel = "Refresh",
   refreshing = false,
+  refreshDisabled = false,
   onRefreshClick,
   showFilter = true,
   filterLabel = "Filter",
@@ -120,7 +122,7 @@ export default function Toolbar({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-3 rounded-2xl border border-border/50 bg-card px-4 py-3",
+        "flex flex-wrap items-center gap-3 rounded-2xl",
         !hasSearch && "justify-end",
         className
       )}
@@ -200,7 +202,7 @@ export default function Toolbar({
             onClick={onRefreshClick}
             type="button"
             variant="outline"
-            disabled={refreshing}
+            disabled={refreshing || refreshDisabled}
           >
             <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
             <span>{refreshLabel}</span>

@@ -14,32 +14,86 @@ type ItemSchemaLookup = Pick<
   "getItemSchemaName"
 >;
 
+const MEMORY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const memoryCache = new Map<string, { items: InventoryItemDTO[], expiresAt: number }>();
+
+export function invalidateInventoryCache(steamAccountId: string) {
+  memoryCache.delete(steamAccountId);
+}
+
 export async function getInventory(
   client: ISteamClient | undefined,
   steamAccountId: string,
-  forceRefresh = false
+  forceRefresh = false,
+  cacheTtlMs = 60 * 60 * 1000
 ): Promise<InventoryItemDTO[]> {
 
+  const now = Date.now();
+
+  // 0. Check in-memory cache (Emergency layer)
+  if (!forceRefresh) {
+    const cached = memoryCache.get(steamAccountId);
+    if (cached && cached.expiresAt > now) {
+      console.log("[Inventory] Serving from memory cache");
+      return cached.items;
+    }
+  }
 
   // 1. Check cache (skip if forceRefresh)
   if (!forceRefresh) {
-    const { data: cache } = await supabaseAdmin
-      .from("steam_inventory_cache")
-      .select("items, updated_at")
-      .eq("steam_account_id", steamAccountId)
-      .single();
+    try {
+      const { data: cache } = await supabaseAdmin
+        .from("steam_inventory_cache")
+        .select("items, updated_at")
+        .eq("steam_account_id", steamAccountId)
+        .single();
 
-    if (cache) {
-      const age = Date.now() - new Date(cache.updated_at).getTime();
-      if (age < 60 * 60 * 1000) { // 1 hour
-        return cache.items as InventoryItemDTO[];
+      if (cache) {
+        const age = now - new Date(cache.updated_at).getTime();
+        if (age < cacheTtlMs) {
+          return cache.items as InventoryItemDTO[];
+        }
       }
+    } catch (err) {
+      console.warn("[Inventory] Failed to check Supabase cache, proceeding to fetch:", err);
     }
   }
 
   // 2. Fetch from Steam
   if (!client) {
     throw new Error("Inventory cache miss and Steam client not connected. Please reconnect.");
+  }
+
+  // PRE-FETCH: Try to get existing cache to preserve storage metadata (price/count)
+  // We do this even on forceRefresh because Steam doesn't return this data
+  const storageMetadataMap = new Map<string, { price: number, count: number }>();
+  try {
+    const { data: oldCache } = await supabaseAdmin
+      .from("steam_inventory_cache")
+      .select("items")
+      .eq("steam_account_id", steamAccountId)
+      .single();
+
+    if (oldCache?.items && Array.isArray(oldCache.items)) {
+      const oldItems = oldCache.items as InventoryItemDTO[];
+      let preservedCount = 0;
+      for (const item of oldItems) {
+        if ((item.storagePrice !== undefined && item.storagePrice !== null) || 
+            (item.storageItemsCount !== undefined && item.storageItemsCount !== null)) {
+          // Identify by ID (AssetID) which should be stable for the generic Storage Unit item itself
+          storageMetadataMap.set(item.id, { 
+            price: item.storagePrice ?? 0, 
+            count: item.storageItemsCount ?? 0 
+          });
+          preservedCount++;
+        }
+      }
+      if (preservedCount > 0) {
+        console.log(`[Inventory] Found ${preservedCount} items with preserved storage metadata in cache`);
+      }
+    }
+  } catch (err) {
+    console.warn("[Inventory] Failed to read old cache for metadata preservation:", err);
   }
 
   const rawItems = await client.getInventory();
@@ -75,14 +129,35 @@ export async function getInventory(
         dto.priceCurrency = 'USD';
       }
     }
+
+    // RESTORE STORAGE METADATA
+    // Check if this item is a storage unit and we have preserved data for it
+    const preserved = storageMetadataMap.get(dto.id);
+    if (preserved) {
+      // Basic check to ensure it's still a storage unit (def_index 1201 or similar logic)
+      // We assume ID collision is impossible so straight assignment is safe
+      if (preserved.price > 0) dto.storagePrice = preserved.price;
+      if (preserved.count > 0) dto.storageItemsCount = preserved.count;
+    }
   }
 
-  // 4. Save to cache
-  await supabaseAdmin.from("steam_inventory_cache").upsert({
-    steam_account_id: steamAccountId,
+  // Save to memory cache immediately
+  memoryCache.set(steamAccountId, {
     items: dtos,
-    updated_at: new Date().toISOString()
+    expiresAt: now + MEMORY_CACHE_TTL
   });
+
+  // 4. Save to cache
+  try {
+    await supabaseAdmin.from("steam_inventory_cache").upsert({
+      steam_account_id: steamAccountId,
+      items: dtos,
+      updated_at: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error("[Inventory] Failed to save inventory to Supabase cache (serving from memory):", err);
+    // Do not throw, return items anyway
+  }
 
   return dtos;
 }
@@ -137,6 +212,23 @@ function stripWearSuffix(name: string): string {
     return name;
   }
   return match[1].trim();
+}
+
+function hasStatTrakPrefix(name: string): boolean {
+  return /^StatTrak™\s/i.test(name);
+}
+
+function isStatTrakItem(rawItem: SteamInventoryItem): boolean {
+  const attributes = rawItem.attribute ?? [];
+  if (attributes.some((attr) => attr.def_index === 80 || attr.def_index === 81)) {
+    return true;
+  }
+  const haystacks = [
+    rawItem.market_hash_name,
+    rawItem.name,
+    rawItem.type
+  ].filter((value): value is string => typeof value === "string");
+  return haystacks.some((value) => value.toLowerCase().includes("stattrak"));
 }
 
 
@@ -412,6 +504,7 @@ export function mapSteamItemToDTO(
   const hasPaintWear = paintWear !== null && Number.isFinite(paintWear);
   const schemaName = schemaLookup.getItemSchemaName(defIndex);
   const rawName = rawItem.market_hash_name ?? rawItem.name ?? null;
+  const statTrak = isStatTrakItem(rawItem);
 
   const resolution = resolveItemType(rawItem);
   let baseItem: SkinSchema | null = null;
@@ -517,6 +610,10 @@ export function mapSteamItemToDTO(
     marketHashName = "Unknown item";
   }
 
+  if (statTrak && !hasStatTrakPrefix(marketHashName)) {
+    marketHashName = `StatTrak™ ${marketHashName}`;
+  }
+
   // Use the resolved item for schema info
   const image = baseItem?.image ?? null;
 
@@ -548,7 +645,3 @@ export function mapSteamItemToDTO(
     schema: schemaDto
   };
 }
-
-
-
-

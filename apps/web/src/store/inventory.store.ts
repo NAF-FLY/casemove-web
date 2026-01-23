@@ -6,6 +6,7 @@ import { get, set, del } from "idb-keyval";
 import type { InventoryItemDTO } from "@casemove/shared-types";
 
 import { fetchInventory } from "@/lib/api-client/inventory";
+import { depositToStorage as depositToStorageApi, type StorageDepositResponse } from "@/lib/api-client/storage";
 
 // Custom storage adapter for IndexedDB
 const storage: StateStorage = {
@@ -31,7 +32,12 @@ type InventoryState = {
   setItems: (items: InventoryItemDTO[]) => void;
   updateItem: (id: string, updates: Partial<InventoryItemDTO>) => void;
   toggleGrouped: () => void;
-  loadInventory: (accountId: string | null, force?: boolean) => Promise<void>;
+  loadInventory: (
+    accountId: string | null,
+    force?: boolean,
+    options?: { cacheTtlMs?: number }
+  ) => Promise<void>;
+  depositToStorage: (storageId: string, itemIds: string[]) => Promise<StorageDepositResponse>;
 };
 
 export const useInventoryStore = create<InventoryState>()(
@@ -49,10 +55,19 @@ export const useInventoryStore = create<InventoryState>()(
         items: state.items.map((item) => (item.id === id ? { ...item, ...updates } : item))
       })),
       toggleGrouped: () => set((state) => ({ isGrouped: !state.isGrouped })),
-      loadInventory: async (accountId: string | null, force = false) => {
+      loadInventory: async (
+        accountId: string | null,
+        force = false,
+        options
+      ) => {
         const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
         const now = Date.now();
         const { lastUpdated, items: currentItems, loading, accountId: currentAccountId } = get();
+
+        // Prevent parallel requests for the same account
+        if (loading && accountId === currentAccountId) {
+          return;
+        }
 
         // If switching accounts, check if we need to clear items
         if (accountId !== currentAccountId) {
@@ -66,21 +81,57 @@ export const useInventoryStore = create<InventoryState>()(
         }
 
         // Check cache validity using persisted timestamp
-        if (!force && !loading && currentItems.length > 0 && now - lastUpdated < CACHE_DURATION) {
+        const isCacheValid =
+          !force &&
+          !loading &&
+          currentItems.length > 0 &&
+          now - lastUpdated < CACHE_DURATION;
+
+        if (isCacheValid) {
           return;
         }
         
         set({ loading: true, error: null });
 
         try {
-          const items = await fetchInventory(force);
-          set({ items, loading: false, lastUpdated: Date.now() });
+          const items = await fetchInventory(force, options?.cacheTtlMs);
+          const previousItems = get().items;
+          const previousById = new Map(previousItems.map((item) => [item.id, item]));
+          const mergedItems = items.map((item) => {
+            const previous = previousById.get(item.id);
+            if (!previous) {
+              return item;
+            }
+            const storagePrice =
+              item.storagePrice == null || (item.storagePrice === 0 && (previous.storagePrice ?? 0) > 0)
+                ? previous.storagePrice
+                : item.storagePrice;
+            const storageItemsCount =
+              item.storageItemsCount == null ||
+              (item.storageItemsCount === 0 && (previous.storageItemsCount ?? 0) > 0)
+                ? previous.storageItemsCount
+                : item.storageItemsCount;
+            return {
+              ...item,
+              storagePrice,
+              storageItemsCount
+            };
+          });
+          set({ items: mergedItems, loading: false, lastUpdated: Date.now() });
         } catch (error) {
           set({
             error: error instanceof Error ? error.message : "Failed to load inventory",
             loading: false
           });
         }
+      },
+      depositToStorage: async (storageId, itemIds) => {
+        const response = await depositToStorageApi(storageId, itemIds);
+        const accountId = get().accountId;
+        if (accountId) {
+          await get().loadInventory(accountId, true);
+        }
+        return response;
       }
     }),
     {

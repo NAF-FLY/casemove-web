@@ -3,5 +3,6 @@ docs
 .next
 
 .env
+.env.local
 .codex
 .directory
