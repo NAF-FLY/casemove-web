@@ -5,13 +5,12 @@ import type { TransferResult } from "./types";
 type TransferAlertsProps = {
   transferError: string | null;
   transferResults: TransferResult[] | null;
-  transferSuccess: string | null;
+
 };
 
 export default function TransferAlerts({
   transferError,
-  transferResults,
-  transferSuccess
+  transferResults
 }: TransferAlertsProps) {
   return (
     <>
@@ -54,19 +53,7 @@ export default function TransferAlerts({
         </div>
       ) : null}
 
-      {transferSuccess ? (
-        <div className="px-6 pt-4">
-          <Alert
-            color="success"
-            description={transferSuccess}
-            classNames={{
-              base: "w-full rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-3",
-              description: "text-xs leading-relaxed text-emerald-200",
-              iconWrapper: "text-emerald-200"
-            }}
-          />
-        </div>
-      ) : null}
+
     </>
   );
 }

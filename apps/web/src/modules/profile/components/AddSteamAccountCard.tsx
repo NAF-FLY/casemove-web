@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+
 import { Accordion, AccordionItem, Button, Input, Spinner } from "@heroui/react";
 import { Link2, Lock, ShieldCheck, User } from "lucide-react";
 

@@ -1,5 +1,4 @@
-"use client";
-
+import { memo } from "react";
 import type { InventoryItemDTO } from "@casemove/shared-types";
 
 import InventoryTable from "@/modules/inventory/components/InventoryTable";
@@ -19,7 +18,7 @@ type StorageContentPanelProps = {
   hasStorageCache: boolean;
 };
 
-export default function StorageContentPanel({
+function StorageContentPanel({
   activeStorage,
   storageLoading,
   storageItems,
@@ -84,3 +83,5 @@ export default function StorageContentPanel({
     </div>
   );
 }
+
+export default memo(StorageContentPanel);

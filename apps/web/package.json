@@ -3,7 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "next dev"
+    "dev": "next dev",
+    "lint": "next lint"
   },
   "dependencies": {
     "@casemove/shared-types": "workspace:*",
@@ -18,7 +19,6 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-virtuoso": "^4.18.1",
-    "steamcommunity": "^3.49.0",
     "tailwind-merge": "^2.2.1",
     "tailwindcss-animate": "^1.0.7",
     "zustand": "^4.5.2"
@@ -29,6 +29,8 @@
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "autoprefixer": "^10.4.18",
+    "eslint": "^9.39.2",
+    "eslint-config-next": "^16.1.6",
     "postcss": "^8.4.35",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.3.3"

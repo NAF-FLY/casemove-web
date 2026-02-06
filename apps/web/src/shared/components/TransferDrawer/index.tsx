@@ -46,7 +46,6 @@ type TransferDrawerProps = {
   isTransferring: boolean;
   transferError: string | null;
   transferResults: TransferResult[] | null;
-  transferSuccess: string | null;
   getItemImageUrl: (item: InventoryItemDTO) => string | null;
 };
 
@@ -72,7 +71,6 @@ export default function TransferDrawer({
   isTransferring,
   transferError,
   transferResults,
-  transferSuccess,
   getItemImageUrl
 }: TransferDrawerProps) {
   const config = TRANSFER_CONFIGS[mode];
@@ -120,7 +118,6 @@ export default function TransferDrawer({
         <TransferAlerts
           transferError={transferError}
           transferResults={transferResults}
-          transferSuccess={transferSuccess}
         />
 
         <TransferSource

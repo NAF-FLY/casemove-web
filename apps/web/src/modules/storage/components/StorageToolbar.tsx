@@ -1,5 +1,4 @@
-"use client";
-
+import { memo } from "react";
 import Toolbar from "@/shared/components/ui/Toolbar";
 
 type RefreshCooldownInfo = {
@@ -18,7 +17,7 @@ type StorageToolbarProps = {
   updatedAt?: string;
 };
 
-export default function StorageToolbar({
+function StorageToolbar({
   itemSearch,
   onItemSearchChange,
   cooldownInfo,
@@ -63,3 +62,5 @@ export default function StorageToolbar({
     </div>
   );
 }
+
+export default memo(StorageToolbar);

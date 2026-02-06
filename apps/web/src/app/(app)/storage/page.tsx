@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { shallow } from "zustand/shallow";
 
 import StorageContentPanel from "@/modules/storage/components/StorageContentPanel";
@@ -80,7 +80,8 @@ export default function StoragePage() {
     loadAccounts,
     setAccountId,
     loadInventory,
-    activeStorageId
+    activeStorageId,
+    hasStorageCache: Boolean(storageItemsCache)
   });
 
   const {
@@ -99,11 +100,29 @@ export default function StoragePage() {
     isTransferring,
     transferResults,
     transferError,
-    transferSuccess,
     getItemImageUrl,
     selectionCount,
     selectedItems
   } = useStorageWithdrawal();
+
+  const handleRefresh = useCallback(() => {
+    if (!activeStorageId) {
+      return;
+    }
+    void (async () => {
+      const response = await loadStorageItems(
+        activeStorageId,
+        true,
+        activeAccountId
+      );
+      if (response) {
+        setCooldownStarts((prev) => ({
+          ...prev,
+          [activeStorageId]: Date.now()
+        }));
+      }
+    })();
+  }, [activeStorageId, activeAccountId]);
 
   return (
     <div className="mt-0 pb-8 pl-0 pr-0">
@@ -128,24 +147,7 @@ export default function StoragePage() {
             onItemSearchChange={setItemSearch}
             cooldownInfo={cooldownInfo}
             storageLoading={storageLoading}
-            onRefresh={() => {
-              if (!activeStorageId) {
-                return;
-              }
-              void (async () => {
-                const response = await loadStorageItems(
-                  activeStorageId,
-                  true,
-                  activeAccountId
-                );
-                if (response) {
-                  setCooldownStarts((prev) => ({
-                    ...prev,
-                    [activeStorageId]: Date.now()
-                  }));
-                }
-              })();
-            }}
+            onRefresh={handleRefresh}
             itemCount={filteredStorageItems.length}
             totalValue={totalValue}
             updatedAt={updatedAt}
@@ -187,7 +189,6 @@ export default function StoragePage() {
         isTransferring={isTransferring}
         transferResults={transferResults}
         transferError={transferError}
-        transferSuccess={transferSuccess}
         getItemImageUrl={getItemImageUrl}
       />
     </div>

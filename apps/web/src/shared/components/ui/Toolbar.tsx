@@ -43,8 +43,7 @@ type ToolbarProps = {
   storageValue?: number;
   valueCurrency?: string;
   // Selected items stats
-  selectedCount?: number;
-  selectedValue?: number;
+
 };
 
 export default function Toolbar({
@@ -78,8 +77,7 @@ export default function Toolbar({
   totalValue,
   storageValue,
   valueCurrency = "USD",
-  selectedCount,
-  selectedValue
+
 }: ToolbarProps) {
   const formattedValue = totalValue != null
     ? new Intl.NumberFormat("en-US", {
@@ -88,13 +86,7 @@ export default function Toolbar({
         minimumFractionDigits: 2
       }).format(totalValue)
     : null;
-  const formattedSelectedValue = selectedValue != null
-    ? new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: valueCurrency,
-        minimumFractionDigits: 2
-      }).format(selectedValue)
-    : null;
+
   const hasSearch = showSearch;
   const isSearchControlled = typeof searchValue === "string";
   const isViewControlled = typeof viewMode === "string";

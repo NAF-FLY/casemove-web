@@ -1,6 +1,6 @@
 "use client";
 
-import { addToast, Button, Chip, Image, Link, Skeleton } from "@heroui/react";
+import { addToast, Chip, Image, Link, Skeleton } from "@heroui/react";
 import {
   AlertCircle,
   CheckCircle2,

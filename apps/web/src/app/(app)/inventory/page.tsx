@@ -44,7 +44,7 @@ export default function InventoryPage() {
     isTransferring,
     transferResults,
     transferError,
-    transferSuccess,
+
     
     getItemImageUrl,
     selectionCount,
@@ -122,8 +122,8 @@ export default function InventoryPage() {
                 itemCount={filteredItems.length}
                 totalValue={filteredItems.reduce((sum, item) => sum + (item.price ?? 0), 0)}
                 storageValue={filteredItems.reduce((sum, item) => sum + (item.storagePrice ?? 0), 0)}
-                selectedCount={selectionCount}
-                selectedValue={totalValue}
+
+
                 showRefresh
                 refreshLabel="Refresh"
                 refreshing={loading}
@@ -183,7 +183,7 @@ export default function InventoryPage() {
         isTransferring={isTransferring}
         transferResults={transferResults}
         transferError={transferError}
-        transferSuccess={transferSuccess}
+
         getItemImageUrl={getItemImageUrl}
       />
     </div>

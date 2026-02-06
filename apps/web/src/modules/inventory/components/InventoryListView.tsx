@@ -40,7 +40,7 @@ export default function InventoryListView({
         className="w-full scrollbar-thin scrollbar-track-transparent scrollbar-thumb-border/40 hover:scrollbar-thumb-border/60"
         data={items}
         overscan={400}
-        itemContent={(index, displayItem) => {
+        itemContent={(_, displayItem) => {
           const {
             item,
             condition,

@@ -8,6 +8,6 @@ supabase
 .codex
 .directory
 
-.GEMINI.md
+GEMINI.md
 .serena
-.agents
+.agent

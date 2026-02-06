@@ -6,7 +6,7 @@ import type { InventoryItemDTO } from "@casemove/shared-types";
 import { useInventoryStore } from "@/modules/inventory/inventory.store";
 import { useInventorySelection } from "@/modules/inventory/inventorySelection.store";
 import { useStorageStore } from "@/modules/storage/storage.store";
-import { useSteamAccountsStore } from "@/modules/profile/steamAccounts.store";
+
 import { type GroupedTransferItem } from "@/shared/components/TransferDrawer/types";
 import { getItemImageUrl } from "./inventory.utils";
 
@@ -17,7 +17,7 @@ export function useInventoryDeposit() {
   const [transferResults, setTransferResults] = useState<any[] | null>(null); // Typos in types will be fixed by inference or explicit import if needed
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
 
-  const activeAccountId = useSteamAccountsStore((state) => state.activeAccountId);
+
   
   // Selection State
   const { selected, quantities, setQuantity, clear: clearSelection } = useInventorySelection();
@@ -102,17 +102,7 @@ export function useInventoryDeposit() {
     return sum + group.unitValue * qty;
   }, 0);
 
-  const onRemove = (key: string) => {
-     // Remove all items of this group from selection
-     const itemsToRemove = inventoryItems.filter(i => i.marketHashName === key && selected.has(i.id));
-     // We need to access toggle or remove logic.
-     // useInventorySelection has `toggle` but maybe we want `remove`.
-     // Let's checking store... it has `toggleGroup` which toggles IDs.
-     // But we want to REMOVE specifically.
-     // If they are selected, toggle will remove them.
-     const idsToRemove = itemsToRemove.map(i => i.id);
-     useInventorySelection.getState().toggleGroup(idsToRemove); // Direct access or via hook
-  };
+
   
   const toggleGroupWrapper = (ids: string[]) => {
       useInventorySelection.getState().toggleGroup(ids);

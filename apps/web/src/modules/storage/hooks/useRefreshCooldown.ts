@@ -19,15 +19,32 @@ export function useRefreshCooldown(
   cooldownStartAt: number | undefined,
   cooldownMs = 2 * 60 * 1000
 ): RefreshCooldownState {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    if (!cooldownStartAt) {
+      setNow(null);
+      return;
+    }
+
+    // Initial update
+    setNow(Date.now());
+
+    const timer = setInterval(() => {
+      const current = Date.now();
+      if (current - cooldownStartAt >= cooldownMs) {
+        clearInterval(timer);
+        setNow(null);
+      } else {
+        setNow(current);
+      }
+    }, 1000);
+
     return () => clearInterval(timer);
-  }, []);
+  }, [cooldownStartAt, cooldownMs]);
 
   return useMemo(() => {
-    if (!cooldownStartAt) {
+    if (!cooldownStartAt || now === null) {
       return { isCooldown: false, remaining: 0, formattedRemaining: "00:00" };
     }
 

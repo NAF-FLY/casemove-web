@@ -1,24 +1,23 @@
 import { useState } from "react";
 import { addToast } from "@heroui/react";
 
-import { useInventoryStore } from "@/modules/inventory/inventory.store";
+
 import { useStorageSelection } from "@/modules/storage/storageSelection.store";
 import { useStorageStore } from "@/modules/storage/storage.store";
 import type { TransferResult } from "@/shared/components/TransferDrawer/types";
-import { getItemImageUrl } from "@/modules/inventory/inventory.utils";
+import { getItemImageUrl } from "../inventory/inventory.utils";
 
-import { useAuthStore } from "@/modules/auth/auth.store";
+
 
 export function useStorageWithdrawal() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferResults, setTransferResults] = useState<TransferResult[] | null>(null);
   const [transferError, setTransferError] = useState<string | null>(null);
-  const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
 
   const { selected, quantities, toggle, clear } = useStorageSelection();
   const { withdrawItems, activeStorageId, itemsByStorageId } = useStorageStore();
-  const { userEmail } = useAuthStore();
+
   const currentStorage = activeStorageId ? itemsByStorageId[activeStorageId] : null;
 
   // Derive selection details
@@ -39,12 +38,7 @@ export function useStorageWithdrawal() {
   // For storage items, they are unique instances. We can group by marketHashName for display.
   // But withdrawal is by ID.
   // Let's reuse the grouping structure for display consistency
-  const groupedItems = Object.values(
-    selectedItems.reduce((acc, item) => {
-      // Placeholder for grouping logic if needed
-      return acc;
-    }, {} as any)
-  );
+
   
   // Actually, let's just map selected items directly to groups
   // Since storage items are individual assets (usually), we treat them as groups of 1
@@ -61,7 +55,6 @@ export function useStorageWithdrawal() {
     setIsTransferring(true);
     setTransferError(null);
     setTransferResults(null);
-    setTransferSuccess(null);
 
     try {
       // Logic for splitting transfer if needed (e.g. batching)
@@ -83,7 +76,6 @@ export function useStorageWithdrawal() {
          const successIds = response.results.filter((r: any) => r.status === "ok").map((r: any) => r.itemId);
          successIds.forEach((id: string) => toggle(id));
       } else {
-         setTransferSuccess("Items successfully withdrawn to inventory!");
          addToast({ title: "Success", description: "Items withdrawn successfully", color: "success" });
          clear();
          setIsDrawerOpen(false);
@@ -129,7 +121,6 @@ export function useStorageWithdrawal() {
     isTransferring,
     transferError,
     transferResults,
-    transferSuccess,
     
     // Utils
     getItemImageUrl,

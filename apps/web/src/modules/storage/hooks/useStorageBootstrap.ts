@@ -14,6 +14,7 @@ export type UseStorageBootstrapParams = {
     options?: { cacheTtlMs?: number }
   ) => Promise<void>;
   activeStorageId: string | null;
+  hasStorageCache: boolean;
 };
 
 export function useStorageBootstrap({
@@ -22,7 +23,8 @@ export function useStorageBootstrap({
   loadAccounts,
   setAccountId,
   loadInventory,
-  activeStorageId
+  activeStorageId,
+  hasStorageCache
 }: UseStorageBootstrapParams) {
   const INVENTORY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   const storageAccountId = useStorageStore((state) => state.accountId);
@@ -47,12 +49,18 @@ export function useStorageBootstrap({
   }, [activeAccountId, loadInventory]);
 
   useEffect(() => {
-    if (!activeStorageId || !activeAccountId || storageAccountId !== activeAccountId) {
+    if (
+      !activeStorageId ||
+      !activeAccountId ||
+      storageAccountId !== activeAccountId
+    ) {
       return;
     }
     if (storageLoadTimer.current) {
       clearTimeout(storageLoadTimer.current);
     }
+    // If cache is missing (e.g. after withdrawal), we should trigger a load.
+    // If cache exists, loadStorageItems will handle the TTL check internally.
     storageLoadTimer.current = setTimeout(() => {
       void loadStorageItems(activeStorageId, false, activeAccountId);
       storageLoadTimer.current = null;
@@ -64,5 +72,5 @@ export function useStorageBootstrap({
         storageLoadTimer.current = null;
       }
     };
-  }, [activeStorageId, activeAccountId, storageAccountId]);
+  }, [activeStorageId, activeAccountId, storageAccountId, hasStorageCache]);
 }
