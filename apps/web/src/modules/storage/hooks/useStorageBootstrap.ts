@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { loadStorageItems } from "@/modules/storage/storage.service";
-import { useStorageStore } from "@/store/storage.store";
+import { useStorageStore } from "@/modules/storage/storage.store";
 
 export type UseStorageBootstrapParams = {
   activeAccountId: string | null;

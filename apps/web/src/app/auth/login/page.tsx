@@ -1,5 +1,5 @@
-import LoginCard from "@/components/auth/LoginCard";
-import PageContainer from "@/components/layout/PageContainer";
+import LoginCard from "@/modules/auth/components/LoginCard";
+import PageContainer from "@/shared/components/layout/PageContainer";
 
 export default function LoginPage() {
   return (

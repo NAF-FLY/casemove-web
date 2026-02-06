@@ -1,7 +1,7 @@
 import { shallow } from "zustand/shallow";
 
-import { useInventoryStore } from "@/store/inventory.store";
-import { useStorageStore } from "@/store/storage.store";
+import { useInventoryStore } from "@/modules/inventory/inventory.store";
+import { useStorageStore } from "@/modules/storage/storage.store";
 
 export function useInventoryCore() {
   return useInventoryStore(

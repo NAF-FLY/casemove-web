@@ -367,4 +367,110 @@ export async function registerStorageRoutes(app: FastifyInstance) {
       return reply.code(500).send({ message });
     }
   });
+
+  // POST /storage/:id/withdraw - Move items from storage unit to inventory
+  app.post<{ Params: { id: string }, Body: { itemIds?: string[] } }>("/storage/:id/withdraw", async (request, reply) => {
+    if (!request.user) {
+      return reply.code(401).send({ message: "Unauthorized" });
+    }
+
+    const storageId = request.params.id;
+    const itemIds = Array.isArray(request.body?.itemIds)
+      ? request.body.itemIds.filter((id) => typeof id === "string")
+      : [];
+
+    if (!storageId) {
+      return reply.code(400).send({ message: "Storage ID is required" });
+    }
+
+    if (itemIds.length === 0) {
+      return reply.code(400).send({ message: "itemIds must be a non-empty array" });
+    }
+
+    try {
+      const { client, steamAccountId } = await ensureAuthenticatedClient(request.user.userId, "[Storage Withdraw]");
+
+      // Get storage items from cache to validate items belong to this storage
+      let storageItems: InventoryItemDTO[] = [];
+      try {
+        const { data } = await supabaseAdmin
+          .from("steam_storage_cache")
+          .select("items")
+          .eq("steam_account_id", steamAccountId)
+          .eq("storage_id", storageId)
+          .single();
+        if (data?.items && Array.isArray(data.items)) {
+          storageItems = data.items as InventoryItemDTO[];
+        }
+      } catch (err) {
+        console.warn("[Storage Withdraw] Failed to read storage cache:", err);
+      }
+
+      // If no cache, try to fetch from Steam
+      if (storageItems.length === 0) {
+        console.log("[Storage Withdraw] No cache found, fetching from Steam...");
+        await client.loadItemSchema();
+        const rawItems = await client.getStorageItems(storageId);
+        storageItems = rawItems.map((item) => mapSteamItemToDTO(item, client));
+      }
+
+      const storageItemMap = new Map(storageItems.map((item) => [item.id, item]));
+
+      const seen = new Set<string>();
+      const results: DepositItemResult[] = [];
+      const validItemIds: string[] = [];
+
+      for (const itemId of itemIds) {
+        if (seen.has(itemId)) {
+          results.push({ itemId, status: "error", reason: "duplicate itemId" });
+          continue;
+        }
+        seen.add(itemId);
+
+        const item = storageItemMap.get(itemId);
+        if (!item) {
+          results.push({ itemId, status: "error", reason: "item not found in storage" });
+          continue;
+        }
+
+        validItemIds.push(itemId);
+      }
+
+      if (validItemIds.length > 0) {
+        const moveResults = await client.moveItems({
+          from: "storage",
+          to: "inventory",
+          storageId,
+          itemIds: validItemIds
+        });
+
+        for (const result of moveResults) {
+          if (result.ok) {
+            results.push({ itemId: result.itemId, status: "ok" });
+          } else {
+            results.push({ itemId: result.itemId, status: "error", reason: result.error ?? "withdraw failed" });
+          }
+        }
+      }
+
+      const okCount = results.filter((r) => r.status === "ok").length;
+      const status = okCount === 0 ? "failed" : okCount === results.length ? "ok" : "partial";
+
+      // Invalidate caches after withdraw
+      invalidateInventoryCache(steamAccountId);
+      await supabaseAdmin.from("steam_inventory_cache").delete().eq("steam_account_id", steamAccountId);
+      // Expire storage cache so next view will refresh from Steam
+      await supabaseAdmin
+        .from("steam_storage_cache")
+        .update({ updated_at: new Date(0).toISOString() })
+        .eq("steam_account_id", steamAccountId)
+        .eq("storage_id", storageId);
+
+      return reply.send({ status, results });
+    } catch (error) {
+      console.error("[Storage Withdraw] Failed to withdraw items:", error);
+      const message = error instanceof Error ? error.message : "Failed to withdraw items";
+      return reply.code(500).send({ message });
+    }
+  });
 }

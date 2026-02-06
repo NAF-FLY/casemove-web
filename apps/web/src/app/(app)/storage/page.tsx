@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { shallow } from "zustand/shallow";
 
-import StorageContentPanel from "@/components/storage/StorageContentPanel";
-import StorageListPanel from "@/components/storage/StorageListPanel";
-import StorageToolbar from "@/components/storage/StorageToolbar";
+import StorageContentPanel from "@/modules/storage/components/StorageContentPanel";
+import StorageListPanel from "@/modules/storage/components/StorageListPanel";
+import StorageToolbar from "@/modules/storage/components/StorageToolbar";
 import { loadStorageItems } from "@/modules/storage/storage.service";
 import { useRefreshCooldown } from "@/modules/storage/hooks/useRefreshCooldown";
 import { useStorageBootstrap } from "@/modules/storage/hooks/useStorageBootstrap";
@@ -17,7 +17,11 @@ import {
   useStorageCore,
   useStorageReadiness
 } from "@/modules/storage/storage.selectors";
-import { useSteamAccountsStore } from "@/store/steamAccounts.store";
+import { useSteamAccountsStore } from "@/modules/profile/steamAccounts.store";
+
+import FloatingActionButton from "@/shared/components/ui/FloatingActionButton";
+import TransferDrawer from "@/shared/components/TransferDrawer";
+import { useStorageWithdrawal } from "@/modules/storage/useStorageWithdrawal";
 
 export default function StoragePage() {
   const { activeAccountId, accounts, loadAccounts } = useSteamAccountsStore(
@@ -79,10 +83,32 @@ export default function StoragePage() {
     activeStorageId
   });
 
+  const {
+    isDrawerOpen,
+    setIsDrawerOpen,
+    openDrawer,
+    groupedItems,
+    availableItemsByKey,
+    quantities,
+    setQuantity,
+    onRemove,
+    touchedQuantitiesRef,
+    totalSelectedCount,
+    totalValue: selectedTotalValue,
+    handleWithdraw,
+    isTransferring,
+    transferResults,
+    transferError,
+    transferSuccess,
+    getItemImageUrl,
+    selectionCount,
+    selectedItems
+  } = useStorageWithdrawal();
+
   return (
-    <div className="mt-0 px-8 pb-8">
+    <div className="mt-0 pb-8 pl-0 pr-0">
       {/* Two-column layout: storage list on left, content on right */}
-      <div className="grid items-start gap-6 lg:grid-cols-[280px_1fr]">
+      <div className="grid items-start gap-0 lg:grid-cols-[280px_1fr]">
         {/* Left: Storage Units List - sticky sidebar */}
         <StorageListPanel
           storageSearch={storageSearch}
@@ -96,7 +122,7 @@ export default function StoragePage() {
         />
 
         {/* Right: Content Area (Toolbar + Items) */}
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-4">
           <StorageToolbar
             itemSearch={itemSearch}
             onItemSearchChange={setItemSearch}
@@ -137,6 +163,33 @@ export default function StoragePage() {
           />
         </div>
       </div>
+
+      <FloatingActionButton
+        label="Withdraw Selected"
+        visible={selectionCount > 0}
+        onClick={openDrawer}
+      />
+
+      <TransferDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        mode="withdraw"
+        selectedItems={selectedItems}
+        groupedItems={groupedItems}
+        availableItemsByKey={availableItemsByKey}
+        quantities={quantities}
+        setQuantity={setQuantity}
+        onRemove={onRemove}
+        touchedQuantitiesRef={touchedQuantitiesRef}
+        totalSelectedCount={totalSelectedCount}
+        totalValue={selectedTotalValue}
+        onTransfer={handleWithdraw}
+        isTransferring={isTransferring}
+        transferResults={transferResults}
+        transferError={transferError}
+        transferSuccess={transferSuccess}
+        getItemImageUrl={getItemImageUrl}
+      />
     </div>
   );
 }

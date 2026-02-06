@@ -1,6 +1,6 @@
-import { fetchStorageItems } from "@/lib/api-client/storage";
-import { useInventoryStore } from "@/store/inventory.store";
-import { useStorageStore } from "@/store/storage.store";
+import { fetchStorageItems } from "@/core/api-client/storage.client";
+import { useInventoryStore } from "@/modules/inventory/inventory.store";
+import { useStorageStore } from "@/modules/storage/storage.store";
 import { mapStorageResponseToCache } from "@/modules/storage/storage.mappers";
 
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes (client side cache check)

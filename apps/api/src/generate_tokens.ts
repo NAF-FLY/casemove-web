@@ -24,6 +24,3 @@ const anonPayload = {
 
 const serviceRoleToken = jwt.sign(serviceRolePayload, secret, { algorithm: "HS256" });
 const anonToken = jwt.sign(anonPayload, secret, { algorithm: "HS256" });
-
-console.log("SERVICE_ROLE_KEY=" + serviceRoleToken);
-console.log("ANON_KEY=" + anonToken);

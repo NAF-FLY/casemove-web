@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { useDebouncedValue } from "@/shared/hooks/useDebouncedValue";
 import type { StorageItemsCache } from "../storage.types";
 
 type UseStorageItemsParams = {

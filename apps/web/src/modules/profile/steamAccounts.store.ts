@@ -1,0 +1,237 @@
+import { createWithEqualityFn } from "zustand/traditional";
+
+import type {
+  ConnectSteamAccountPayload,
+  CreateSteamAccountPayload,
+  SteamAccount
+} from "@/core/api-client/steamAccounts.client";
+import {
+  connectSteamAccount,
+  createSteamAccount,
+  deleteSteamAccount,
+  disconnectSteamAccount,
+  fetchSteamAccounts,
+  switchSteamAccount,
+  tryAutoConnect
+} from "@/core/api-client/steamAccounts.client";
+
+type SteamAccountsState = {
+  accounts: SteamAccount[];
+  activeAccountId: string | null;
+  loading: boolean;
+  actionLoading: string | null;
+  addError: string | null;
+  listError: string | null;
+  lastUpdated: number;
+  loadAccounts: (force?: boolean) => Promise<void>;
+  addAccount: (payload: CreateSteamAccountPayload) => Promise<void>;
+  connectAccount: (
+    accountId: string,
+    payload?: ConnectSteamAccountPayload
+  ) => Promise<void>;
+  tryAutoConnectAccount: (accountId: string) => Promise<boolean>;
+  disconnectAccount: (accountId: string) => Promise<void>;
+  switchAccount: (accountId: string) => Promise<"ok" | "passwordRequired" | "error">;
+  deleteAccount: (accountId: string) => Promise<void>;
+  clearAddError: () => void;
+  clearListError: () => void;
+};
+
+export const useSteamAccountsStore = createWithEqualityFn<SteamAccountsState>()(
+  (set, get) => ({
+  accounts: [],
+  activeAccountId: null,
+  loading: false,
+  actionLoading: null,
+  addError: null,
+  listError: null,
+  lastUpdated: 0,
+
+  loadAccounts: async (force = false) => {
+    const CACHE_DURATION = 30 * 1000; // 1 minute
+    const now = Date.now();
+    const { lastUpdated, loading, accounts } = get();
+
+    if (!force && !loading && accounts.length > 0 && now - lastUpdated < CACHE_DURATION) {
+      return;
+    }
+
+    set({ loading: true, listError: null });
+
+    try {
+      const data = await fetchSteamAccounts();
+
+      set({
+        accounts: data.accounts,
+        activeAccountId: data.activeSteamAccountId,
+        loading: false,
+        lastUpdated: Date.now()
+      });
+    } catch (error) {
+      set({
+        loading: false,
+        listError: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  },
+
+  addAccount: async (payload) => {
+    set({ actionLoading: "add", addError: null });
+
+    try {
+      const account = await createSteamAccount(payload);
+      const { accounts } = get();
+
+      set({
+        accounts: [account, ...accounts.map(a => ({ ...a, status: "idle" as const }))],
+        activeAccountId: account.id,
+        actionLoading: null
+      });
+    } catch (error) {
+      set({
+        actionLoading: null,
+        addError: error instanceof Error ? error.message : "Failed to add account"
+      });
+      throw error;
+    }
+  },
+
+  connectAccount: async (accountId, payload) => {
+    set({ actionLoading: accountId, listError: null });
+
+    try {
+      const updatedAccount = await connectSteamAccount(accountId, payload);
+      const { accounts } = get();
+
+      set({
+        accounts: accounts.map((acc) => {
+          if (acc.id === accountId) return updatedAccount;
+          return { ...acc, status: "idle" as const };
+        }),
+        activeAccountId: accountId,
+        actionLoading: null
+      });
+    } catch (error) {
+      set({
+        actionLoading: null,
+        listError:
+          error instanceof Error ? error.message : "Failed to connect account"
+      });
+      throw error;
+    }
+  },
+
+  tryAutoConnectAccount: async (accountId) => {
+    set({ actionLoading: accountId, listError: null });
+
+    try {
+      const result = await tryAutoConnect(accountId);
+      if (result) {
+        const { accounts } = get();
+        set({
+          accounts: accounts.map((acc) => {
+            if (acc.id === accountId) return result;
+            return { ...acc, status: "idle" as const };
+          }),
+          activeAccountId: accountId,
+          actionLoading: null
+        });
+        return true;
+      }
+      // Password required
+      set({ actionLoading: null });
+      return false;
+    } catch (error) {
+      set({
+        actionLoading: null,
+        listError:
+          error instanceof Error ? error.message : "Failed to connect account"
+      });
+      return false;
+    }
+  },
+
+  disconnectAccount: async (accountId) => {
+    set({ actionLoading: accountId, listError: null });
+
+    try {
+      await disconnectSteamAccount(accountId);
+      const { accounts, activeAccountId } = get();
+
+      set({
+        accounts: accounts.map((acc) =>
+          acc.id === accountId ? { ...acc, status: "idle" as const } : acc
+        ),
+        activeAccountId:
+          activeAccountId === accountId ? null : activeAccountId,
+        actionLoading: null
+      });
+    } catch (error) {
+      set({
+        actionLoading: null,
+        listError:
+          error instanceof Error
+            ? error.message
+            : "Failed to disconnect account"
+      });
+    }
+  },
+
+  switchAccount: async (accountId) => {
+    set({ actionLoading: accountId, listError: null });
+
+    try {
+      await switchSteamAccount(accountId);
+      const { accounts } = get();
+
+      set({
+        accounts: accounts.map((acc) =>
+          acc.id === accountId
+            ? { ...acc, status: "connected" as const }
+            : { ...acc, status: "idle" as const }
+        ),
+        activeAccountId: accountId,
+        actionLoading: null
+      });
+      return "ok";
+    } catch (error) {
+      const requiresPassword = (error as Error & { requiresPassword?: boolean })
+        .requiresPassword;
+
+      set({
+        actionLoading: null,
+        listError:
+          error instanceof Error ? error.message : "Failed to switch account"
+      });
+      if (requiresPassword) {
+        return "passwordRequired";
+      }
+      return "error";
+    }
+  },
+
+  deleteAccount: async (accountId) => {
+    set({ actionLoading: accountId, listError: null });
+
+    try {
+      await deleteSteamAccount(accountId);
+      const { accounts, activeAccountId } = get();
+
+      set({
+        accounts: accounts.filter((acc) => acc.id !== accountId),
+        activeAccountId:
+          activeAccountId === accountId ? null : activeAccountId,
+        actionLoading: null
+      });
+    } catch (error) {
+      set({
+        actionLoading: null,
+        listError:
+          error instanceof Error ? error.message : "Failed to delete account"
+      });
+    }
+  },
+
+  clearAddError: () => set({ addError: null }),
+  clearListError: () => set({ listError: null })
+}));

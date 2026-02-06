@@ -287,10 +287,6 @@ export class SteamClient implements ISteamClient {
 
 
   async moveItems(payload: MoveItemsPayload): Promise<{ itemId: string; ok: boolean; error?: string }[]> {
-    if (payload.from !== "inventory" || payload.to !== "storage") {
-      throw new Error("Only inventory -> storage transfers are supported");
-    }
-
     if (!payload.storageId) {
       throw new Error("Storage ID is required");
     }
@@ -299,9 +295,19 @@ export class SteamClient implements ISteamClient {
       return [];
     }
 
+    if (payload.from === "inventory" && payload.to === "storage") {
+      return this.depositItems(payload.storageId, payload.itemIds);
+    } else if (payload.from === "storage" && payload.to === "inventory") {
+      return this.withdrawItems(payload.storageId, payload.itemIds);
+    } else {
+      throw new Error("Unsupported transfer direction");
+    }
+  }
+
+  private async depositItems(storageId: string, itemIds: string[]): Promise<{ itemId: string; ok: boolean; error?: string }[]> {
     const results: { itemId: string; ok: boolean; error?: string }[] = [];
 
-    for (const itemId of payload.itemIds) {
+    for (const itemId of itemIds) {
       try {
         await this.enqueueGcTask(async () => {
           await this.waitForGcReady(10000);
@@ -309,19 +315,42 @@ export class SteamClient implements ISteamClient {
             throw new Error("Steam GC not ready");
           }
 
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (this.gc as any).addToCasket(payload.storageId, itemId);
-          } catch (err) {
-            throw err;
-          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (this.gc as any).addToCasket(storageId, itemId);
 
           await this.waitForItemRemoved(itemId, 20000);
         });
 
         results.push({ itemId, ok: true });
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to move item";
+        const message = error instanceof Error ? error.message : "Failed to deposit item";
+        results.push({ itemId, ok: false, error: message });
+      }
+    }
+
+    return results;
+  }
+
+  private async withdrawItems(storageId: string, itemIds: string[]): Promise<{ itemId: string; ok: boolean; error?: string }[]> {
+    const results: { itemId: string; ok: boolean; error?: string }[] = [];
+
+    for (const itemId of itemIds) {
+      try {
+        await this.enqueueGcTask(async () => {
+          await this.waitForGcReady(10000);
+          if (!this.gcReady || !this.gc) {
+            throw new Error("Steam GC not ready");
+          }
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (this.gc as any).removeFromCasket(storageId, itemId);
+
+          await this.waitForItemAcquired(itemId, 20000);
+        });
+
+        results.push({ itemId, ok: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to withdraw item";
         results.push({ itemId, ok: false, error: message });
       }
     }
@@ -595,6 +624,51 @@ export class SteamClient implements ISteamClient {
       };
 
       gc.on("itemRemoved", handleRemoved);
+      gc.on("itemCustomizationNotification", handleCustomization);
+    });
+  }
+
+  private waitForItemAcquired(itemId: string, timeoutMs = 20000): Promise<void> {
+    return new Promise((resolve, reject) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const gc = this.gc as any;
+      if (!gc) {
+        reject(new Error("Steam GC not initialized"));
+        return;
+      }
+
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error("Timed out waiting for item acquisition"));
+      }, timeoutMs);
+
+      const handleAcquired = (item: { id?: string; assetid?: string }) => {
+        const acquiredId = String(item?.id ?? item?.assetid ?? "");
+        if (acquiredId === String(itemId)) {
+          cleanup();
+          resolve();
+        }
+      };
+
+      const handleCustomization = (itemIds: string[] | undefined, notificationType: number) => {
+        const casketRemoved = (GlobalOffensive as typeof GlobalOffensive & {
+          ItemCustomizationNotification?: { CasketRemoved?: number };
+        }).ItemCustomizationNotification?.CasketRemoved;
+        if (casketRemoved !== undefined && notificationType === casketRemoved) {
+          if (Array.isArray(itemIds) && itemIds.some((id) => String(id) === String(itemId))) {
+            cleanup();
+            resolve();
+          }
+        }
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        gc.removeListener("itemAcquired", handleAcquired);
+        gc.removeListener("itemCustomizationNotification", handleCustomization);
+      };
+
+      gc.on("itemAcquired", handleAcquired);
       gc.on("itemCustomizationNotification", handleCustomization);
     });
   }

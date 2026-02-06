@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import AuthInit from "./AuthInit";
-import Providers from "./Providers";
+import AuthInit from "@/core/providers/AuthInit";
+import Providers from "@/core/providers/Providers";
 import "./globals.css";
 
 export const metadata = {

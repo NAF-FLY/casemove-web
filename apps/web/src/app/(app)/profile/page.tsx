@@ -2,14 +2,13 @@
 
 import { useState, useCallback } from "react";
 
-import {
-  AddSteamAccountCard,
-  DangerZoneCard,
-  ProfileOverviewCard,
-  SettingsCard,
-  SteamAccountsListCard,
+import AddSteamAccountCard, {
   type SteamFormState
-} from "@/components/profile";
+} from "@/modules/profile/components/AddSteamAccountCard";
+import DangerZoneCard from "@/modules/profile/components/DangerZoneCard";
+import ProfileOverviewCard from "@/modules/profile/components/ProfileOverviewCard";
+import SettingsCard from "@/modules/profile/components/SettingsCard";
+import SteamAccountsListCard from "@/modules/profile/components/SteamAccountsListCard";
 
 const initialSteamForm: SteamFormState = {
   login: "",

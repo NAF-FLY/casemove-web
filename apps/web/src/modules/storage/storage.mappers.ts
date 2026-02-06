@@ -1,4 +1,4 @@
-import type { StorageResponse } from "@/lib/api-client/storage";
+import type { StorageResponse } from "@/core/api-client/storage.client";
 import type { StorageItemsCache } from "./storage.types";
 
 export function mapStorageResponseToCache(

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { addToast } from "@heroui/react";
 import { shallow } from "zustand/shallow";
 
-import { useStorageStore } from "@/store/storage.store";
+import { useStorageStore } from "@/modules/storage/storage.store";
 
 export function useStorageNotifications() {
   const { warning, error } = useStorageStore(
