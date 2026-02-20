@@ -62,4 +62,60 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
       return reply.code(500).send({ message: "Failed to load inventory" });
     }
   });
+
+  app.get("/inventory/stats", async (request, reply) => {
+    if (!request.user) {
+      return reply.code(401).send({ message: "Unauthorized" });
+    }
+
+    const query = request.query as {
+      steamAccountId: string;
+      storageId?: string;
+    };
+
+    const { steamAccountId, storageId } = query;
+
+    if (!steamAccountId) {
+      return reply.code(400).send({ message: "steamAccountId is required" });
+    }
+
+    try {
+      // 1. Ensure user has access to this steam account
+      const { data: account, error: accountError } = await supabaseAdmin
+        .from("steam_accounts")
+        .select("id")
+        .eq("id", steamAccountId)
+        .eq("user_id", request.user.userId)
+        .single();
+
+      if (accountError || !account) {
+        return reply.code(403).send({ message: "Forbidden or account not found" });
+      }
+
+      // 2. Fetch stats
+      let dbQuery = supabaseAdmin
+        .from("inventory_snapshots")
+        .select("*")
+        .eq("steam_account_id", steamAccountId)
+        .order("created_at", { ascending: true }); // Chronological order for charts
+
+      if (storageId) {
+        dbQuery = dbQuery.eq("storage_id", storageId);
+      } else {
+        dbQuery = dbQuery.is("storage_id", null); // is null
+      }
+
+      const { data: stats, error } = await dbQuery;
+
+      if (error) {
+        console.error("[InventoryStats] Error fetching stats:", error);
+        return reply.code(500).send({ message: "Failed to fetch inventory stats" });
+      }
+
+      return { stats };
+    } catch (error) {
+       console.error("[InventoryStats] Error:", error);
+       return reply.code(500).send({ message: "Internal server error" });
+    }
+  });
 }

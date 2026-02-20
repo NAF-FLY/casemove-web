@@ -40,7 +40,7 @@
   - Add basic error handling and standard logging.
 
 ### Phase 3: Backend API Endpoint
-- [ ] **Task 4: Historical Stats Endpoint**
+- [x] **Task 4: Historical Stats Endpoint**
   - Create `GET /api/inventory/stats` endpoint in `apps/api/src/modules/inventory/routes.ts` (or a dedicated stats module).
   - Accept query params: `steamAccountId` and optional `storageId`.
   - Fetch ordered snapshots from `inventory_snapshots` to serve to the frontend.
