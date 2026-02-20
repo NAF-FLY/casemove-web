@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { supabaseAdmin } from "../../core/supabase";
-import { getInventory } from "./service";
+import { getInventory, takeInventorySnapshot } from "./service";
 import { ensureAuthenticatedClient } from "../steam-accounts/connection.utils";
 
 // Store last force refresh time per user to enforce 5-minute cooldown
@@ -115,6 +115,41 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
       return { stats };
     } catch (error) {
        console.error("[InventoryStats] Error:", error);
+       return reply.code(500).send({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/inventory/stats/trigger", async (request, reply) => {
+    if (!request.user) {
+      return reply.code(401).send({ message: "Unauthorized" });
+    }
+
+    const { steamAccountId } = request.body as { steamAccountId: string };
+
+    if (!steamAccountId) {
+      return reply.code(400).send({ message: "steamAccountId is required" });
+    }
+
+    try {
+      // 1. Ensure user has access to this steam account
+      const { data: account, error: accountError } = await supabaseAdmin
+        .from("steam_accounts")
+        .select("id")
+        .eq("id", steamAccountId)
+        .eq("user_id", request.user.userId)
+        .single();
+
+      if (accountError || !account) {
+        return reply.code(403).send({ message: "Forbidden or account not found" });
+      }
+
+      // 2. Trigger snapshot
+      console.log(`[InventoryStats] Manual snapshot triggered for account: ${steamAccountId}`);
+      await takeInventorySnapshot(steamAccountId);
+
+      return { success: true, message: "Snapshot triggered successfully" };
+    } catch (error) {
+       console.error("[InventoryStats] Error triggering manual snapshot:", error);
        return reply.code(500).send({ message: "Internal server error" });
     }
   });

@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { ValueChart, type InventorySnapshot } from "./ValueChart";
-import { Select, SelectItem, Alert } from "@heroui/react";
-import { AlertCircle } from "lucide-react";
+import { Select, SelectItem, Alert, Button, Tooltip as HeroTooltip } from "@heroui/react";
+import { AlertCircle, RefreshCw } from "lucide-react";
 
 interface InventoryStatsDashboardProps {
   steamAccountId: string;
@@ -55,14 +55,62 @@ export function InventoryStatsDashboard({ steamAccountId, storages }: InventoryS
     ...storages
   ], [storages]);
 
+  const [isTriggering, setIsTriggering] = useState(false);
+
+  const handleTriggerSnapshot = async () => {
+    if (!steamAccountId || isTriggering) return;
+    setIsTriggering(true);
+    try {
+      const response = await fetch('/api/inventory/stats/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ steamAccountId })
+      });
+      if (!response.ok) {
+         throw new Error("Failed to trigger snapshot");
+      }
+      
+      // refetch stats after triggering
+      const queryParams = new URLSearchParams({ steamAccountId });
+      if (selectedStorageId !== "main") {
+        queryParams.append("storageId", selectedStorageId);
+      }
+      const statsResponse = await fetch(`/api/inventory/stats?${queryParams.toString()}`);
+      if (statsResponse.ok) {
+        const data = await statsResponse.json();
+        setStats(data.stats || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsTriggering(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">Value History</h2>
-            <p className="text-muted-foreground">
-              Track the value of your items over time
-            </p>
+          <div className="flex items-center gap-4">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">Value History</h2>
+              <p className="text-muted-foreground">
+                Track the value of your items over time
+              </p>
+            </div>
+            
+            <HeroTooltip content="Manually trigger a snapshot of current inventory value">
+               <Button 
+                  isIconOnly 
+                  variant="flat" 
+                  color="primary" 
+                  size="sm"
+                  onPress={handleTriggerSnapshot}
+                  isLoading={isTriggering}
+                  className="rounded-full"
+               >
+                  <RefreshCw className={`h-4 w-4 ${isTriggering ? 'animate-spin' : ''}`} />
+               </Button>
+            </HeroTooltip>
           </div>
           
           <div className="w-full sm:w-[250px]">
