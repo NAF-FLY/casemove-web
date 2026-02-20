@@ -19,21 +19,21 @@
 ## Tasks
 
 ### Phase 1: Database Setup
-- [ ] **Task 1: Migration for Snapshots Table**
+- [x] **Task 1: Migration for Snapshots Table**
   - Create Supabase migration to add `inventory_snapshots` table.
   - Columns: `id` (uuid pk), `steam_account_id` (uuid, fk), `storage_id` (text, nullable, for tracking specific storage), `total_value` (numeric), `created_at` (timestamptz default now).
   - Add Row Level Security (RLS) policies allowing users to read their own accounts' snapshots.
   - Apply the migration locally.
 
 ### Phase 2: Backend Cron & Snapshot Logic
-- [ ] **Task 2: Snapshot Business Logic**
+- [x] **Task 2: Snapshot Business Logic**
   - In `apps/api/src/modules/inventory/service.ts`, implement `takeInventorySnapshot(steamAccountId)`:
     - Call `getInventory` to re-fetch and price the main inventory.
     - Sum up item prices for `total_value`.
     - Insert a record into `inventory_snapshots` with `storage_id = null`.
     - Fetch storages for the account, and for each storage, insert a record into `inventory_snapshots` with the storage's `total_value` and `storage_id`.
   - Add standard `console.info` logging for snapshot events.
-- [ ] **Task 3: Backend Cron Scheduler**
+- [x] **Task 3: Backend Cron Scheduler**
   - Install `node-cron` package in `apps/api`.
   - Create `apps/api/src/plugins/cron.ts` (or modify composition root).
   - Set up a cron schedule (`0 */12 * * *` - every 12 hours) to query all active `steam_accounts` and execute `takeInventorySnapshot` for each.

@@ -6,6 +6,7 @@ import type {
 import type { ISteamClient, SteamInventoryItem } from "../../core/steam-client";
 import { supabaseAdmin } from "../../core/supabase";
 import { skinSchemaService, type SkinSchema } from "../schema/skin-schema.service";
+import { ensureAuthenticatedClient } from "../steam-accounts/connection.utils";
 
 import { priceService } from "./price.service";
 
@@ -160,6 +161,51 @@ export async function getInventory(
   }
 
   return dtos;
+}
+
+export async function takeInventorySnapshot(steamAccountId: string) {
+  try {
+    const { client } = await ensureAuthenticatedClient(steamAccountId, "[Snapshot]");
+    const items = await getInventory(client, steamAccountId, true);
+
+    if (!items || items.length === 0) {
+      console.log(`[Snapshot] No items found for account ${steamAccountId}, skipping snapshot`);
+      return;
+    }
+
+    const totalValue = items.reduce((sum, item) => sum + (item.price ?? 0), 0);
+
+    await supabaseAdmin
+      .from("inventory_snapshots")
+      .insert({
+        steam_account_id: steamAccountId,
+        storage_id: null,
+        total_value: totalValue
+      });
+
+    console.log(`[Snapshot] Saved main inventory snapshot for ${steamAccountId} (Value: $${totalValue.toFixed(2)})`);
+
+    const storageUnits = items.filter(
+      item => item.schema?.name?.startsWith("Storage Unit | ") || item.schema?.name === "Storage Unit"
+    );
+
+    for (const storage of storageUnits) {
+      const storageValue = storage.storagePrice ?? 0;
+      if (storageValue > 0) {
+        await supabaseAdmin
+          .from("inventory_snapshots")
+          .insert({
+            steam_account_id: steamAccountId,
+            storage_id: storage.id,
+            total_value: storageValue
+          });
+        console.log(`[Snapshot] Saved storage snapshot for ${steamAccountId} / ${storage.marketHashName} (Value: $${storageValue.toFixed(2)})`);
+      }
+    }
+
+  } catch (err) {
+    console.error(`[Snapshot] Failed to take snapshot for account ${steamAccountId}:`, err);
+  }
 }
 
 function resolveSteamInventory(

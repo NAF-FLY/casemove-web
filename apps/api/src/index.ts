@@ -6,6 +6,7 @@ import { registerInventoryRoutes } from "./modules/inventory/routes";
 import { registerStorageRoutes } from "./modules/storage/routes";
 import { registerSteamAccountsRoutes } from "./modules/steam-accounts/routes";
 import { skinSchemaService } from "./modules/schema/skin-schema.service";
+import { registerCronJobs } from "./plugins/cron";
 
 const app = Fastify();
 const config = registerConfig(app);
@@ -25,6 +26,8 @@ async function startServer() {
   await registerInventoryRoutes(app);
   await registerStorageRoutes(app);
   await registerSteamAccountsRoutes(app);
+
+  registerCronJobs();
 
   app.listen({ port: config.port }).then((address) => {
     console.log(`Server listening at ${address}`);
