@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { FolderInput, Wallet } from "lucide-react";
 import { Select, SelectItem } from "@heroui/react";
 
@@ -19,6 +20,15 @@ type TransferSourceProps = {
   currentStorageName?: string;
 };
 
+const SELECT_CLASSNAMES = {
+  trigger:
+    "h-14 rounded-xl border border-white/10 bg-[#1B2535] text-base shadow-none outline-none ring-0 data-[hover=true]:border-primary/40 data-[focus=true]:border-primary data-[focus=true]:ring-1 data-[focus=true]:ring-primary data-[focus-visible=true]:outline-none data-[focus-visible=true]:ring-1 data-[focus-visible=true]:ring-primary data-[open=true]:!border-primary data-[open=true]:!ring-1 data-[open=true]:!ring-primary data-[focus=true]:data-[hover=true]:!border-primary focus:outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-within:border-primary focus-within:ring-1 focus-within:ring-primary cursor-pointer",
+  base: "outline-none ring-0 focus:outline-none focus-visible:outline-none",
+  innerWrapper: "gap-3",
+  value: "text-base text-foreground",
+  popoverContent: "bg-[#151A25] border border-white/10"
+};
+
 export default function TransferSource({
   config,
   storageUnits = [],
@@ -27,6 +37,33 @@ export default function TransferSource({
   itemsByStorageId = {},
   currentStorageName
 }: TransferSourceProps) {
+  const formattedStorageUnits = useMemo(() => {
+    return storageUnits.map((unit) => {
+      const name = getStorageName(unit.marketHashName);
+      const cached = itemsByStorageId[unit.id];
+      const cachedCount = cached?.totalItems ?? cached?.items.length;
+      const inventoryCount = unit.storageItemsCount ?? null;
+      const count =
+        inventoryCount === null ||
+        (inventoryCount === 0 && (cachedCount ?? 0) > 0)
+          ? (cachedCount ?? 0)
+          : inventoryCount;
+
+      return {
+        id: unit.id,
+        name,
+        count,
+        textValue: `${name} (${count} items)`
+      };
+    });
+  }, [storageUnits, itemsByStorageId]);
+
+  const selectedKeys = useMemo(
+    () =>
+      selectedDestination ? new Set<string>([selectedDestination]) : new Set<string>(),
+    [selectedDestination]
+  );
+
   if (config.mode === "withdraw") {
     // Withdraw mode: show storage as source, inventory as destination
     return (
@@ -45,7 +82,9 @@ export default function TransferSource({
               <FolderInput className="h-5 w-5" />
             </div>
             <div>
-              <div className="font-medium">{currentStorageName ?? "Storage Unit"}</div>
+              <div className="font-medium">
+                {currentStorageName ?? "Storage Unit"}
+              </div>
               <div className="text-xs text-muted-foreground">
                 Selected storage
               </div>
@@ -121,9 +160,7 @@ export default function TransferSource({
               : "No storage units available"
           }
           isDisabled={storageUnits.length === 0}
-          selectedKeys={
-            selectedDestination ? new Set([selectedDestination]) : new Set()
-          }
+          selectedKeys={selectedKeys}
           onSelectionChange={(keys) => {
             const [first] = Array.from(keys);
             setSelectedDestination?.((first as string) ?? null);
@@ -131,33 +168,15 @@ export default function TransferSource({
           selectionMode="single"
           disallowEmptySelection
           startContent={<FolderInput className="h-5 w-5 text-muted-foreground" />}
-          classNames={{
-            trigger:
-              "h-14 rounded-xl border border-white/10 bg-[#1B2535] text-base shadow-none outline-none ring-0 data-[hover=true]:border-primary/40 data-[focus=true]:border-primary data-[focus=true]:ring-1 data-[focus=true]:ring-primary data-[focus-visible=true]:outline-none data-[focus-visible=true]:ring-1 data-[focus-visible=true]:ring-primary data-[open=true]:!border-primary data-[open=true]:!ring-1 data-[open=true]:!ring-primary data-[focus=true]:data-[hover=true]:!border-primary focus:outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary focus-within:border-primary focus-within:ring-1 focus-within:ring-primary cursor-pointer",
-            base: "outline-none ring-0 focus:outline-none focus-visible:outline-none",
-            innerWrapper: "gap-3",
-            value: "text-base text-foreground",
-            popoverContent: "bg-[#151A25] border border-white/10"
-          }}
+          classNames={SELECT_CLASSNAMES}
           radius="lg"
           variant="bordered"
         >
-          {storageUnits.map((unit) => {
-            const name = getStorageName(unit.marketHashName);
-            const cached = itemsByStorageId[unit.id];
-            const cachedCount = cached?.totalItems ?? cached?.items.length;
-            const inventoryCount = unit.storageItemsCount ?? null;
-            const count =
-              inventoryCount === null ||
-              (inventoryCount === 0 && (cachedCount ?? 0) > 0)
-                ? (cachedCount ?? 0)
-                : inventoryCount;
-            return (
-              <SelectItem key={unit.id} textValue={`${name} (${count} items)`}>
-                {name} ({count} items)
-              </SelectItem>
-            );
-          })}
+          {formattedStorageUnits.map((unit) => (
+            <SelectItem key={unit.id} textValue={unit.textValue}>
+              {unit.name} ({unit.count} items)
+            </SelectItem>
+          ))}
         </Select>
 
         <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">

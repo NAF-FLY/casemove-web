@@ -14,10 +14,8 @@ export function useInventoryDeposit() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
-  const [transferResults, setTransferResults] = useState<any[] | null>(null); // Typos in types will be fixed by inference or explicit import if needed
+  const [transferResults, setTransferResults] = useState<any[] | null>(null); 
   const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
-
-
   
   // Selection State
   const { selected, quantities, setQuantity, clear: clearSelection } = useInventorySelection();
@@ -119,24 +117,43 @@ export function useInventoryDeposit() {
     try {
       // Determine explicit item IDs based on quantities
       const itemIdsToTransfer: string[] = [];
-      
+
       for (const group of groupedItems) {
         const qty = quantities[group.key] ?? group.count;
         // Get all available items of this type
         const allOfThisType = availableItemsByKey.get(group.key) ?? [];
-        // Prioritize already selected items (by ID) to match user expectation?
-        // Actually, logic is: take `qty` items of type `key`.
-        // Prioritize those that are in `selected` set?
-        // Or just take first `qty` available?
-        // `useTransferItemDrawer` had logic: selectedGroupItems + allGroupItems.filter(not selected).
-        // Let's replicate this.
-        
-        const selectedOfThisType = allOfThisType.filter(i => selected.has(i.id));
-        const notSelectedOfThisType = allOfThisType.filter(i => !selected.has(i.id));
-        const candidateItems = [...selectedOfThisType, ...notSelectedOfThisType];
-        
-        const itemsToTake = candidateItems.slice(0, qty);
-        itemIdsToTransfer.push(...itemsToTake.map(i => i.id));
+
+        // Logic: prioritize selected items, then unselected
+        // We know the total count of selected items is group.count
+        const selectedCountTotal = group.count;
+        const neededSelected = Math.min(qty, selectedCountTotal);
+        const neededUnselected = Math.max(0, qty - selectedCountTotal);
+
+        let collectedSelected = 0;
+        let collectedUnselected = 0;
+
+        for (const item of allOfThisType) {
+          // Optimization: stop early if we have enough of both
+          if (
+            collectedSelected >= neededSelected &&
+            collectedUnselected >= neededUnselected
+          ) {
+            break;
+          }
+
+          const isSelected = selected.has(item.id);
+          if (isSelected) {
+            if (collectedSelected < neededSelected) {
+              itemIdsToTransfer.push(item.id);
+              collectedSelected++;
+            }
+          } else {
+            if (collectedUnselected < neededUnselected) {
+              itemIdsToTransfer.push(item.id);
+              collectedUnselected++;
+            }
+          }
+        }
       }
 
       if (itemIdsToTransfer.length === 0) return;
