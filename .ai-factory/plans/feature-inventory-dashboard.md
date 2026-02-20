@@ -46,9 +46,9 @@
   - Fetch ordered snapshots from `inventory_snapshots` to serve to the frontend.
 
 ### Phase 4: Frontend UI
-- [ ] **Task 5: Chart Library Setup**
+- [x] **Task 5: Chart Library Setup**
   - Install `recharts` package in `apps/web`.
-- [ ] **Task 6: Dashboard Component**
+- [x] **Task 6: Dashboard Component**
   - Create a new `ValueChart` component using `recharts` to render a beautiful Area/Line chart for historical value.
   - Create a new `InventoryStatsDashboard` layout that displays the chart.
   - Implement a selector (Dropdown/Tabs) to switch between "Main Inventory" and specific "Storages".

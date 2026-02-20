@@ -11,6 +11,7 @@ import { useInventoryStore } from "@/modules/inventory/inventory.store";
 import { useSteamAccountsStore } from "@/modules/profile/steamAccounts.store";
 import { useInventoryDeposit } from "@/modules/inventory/useInventoryDeposit";
 import { useRefetchOnFocus } from "@/shared/hooks/useRefetchOnFocus";
+import { InventoryStatsDashboard } from "@/modules/inventory/components/dashboard/InventoryStatsDashboard";
 
 export default function InventoryPage() {
   const activeAccountId = useSteamAccountsStore((state) => state.activeAccountId);
@@ -137,6 +138,14 @@ export default function InventoryPage() {
             </div>
           </div>
           <div className="px-8 mt-6">
+            {activeAccountId && (
+              <div className="mb-8">
+                <InventoryStatsDashboard 
+                  steamAccountId={activeAccountId} 
+                  storages={storageUnits.map(u => ({ id: u.id, name: u.marketHashName }))} 
+                />
+              </div>
+            )}
             {error ? (
               <p className="mt-4 text-sm text-destructive">{error}</p>
             ) : null}
