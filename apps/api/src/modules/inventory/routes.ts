@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import fp from "fastify-plugin";
 
 import { supabaseAdmin } from "../../core/supabase";
 import { getInventory, takeInventorySnapshot } from "./service";
@@ -8,7 +9,7 @@ import { ensureAuthenticatedClient } from "../steam-accounts/connection.utils";
 const lastForceRefreshMap = new Map<string, number>();
 const FORCE_REFRESH_COOLDOWN = 5 * 60 * 1000; // 5 minutes
 
-export async function registerInventoryRoutes(app: FastifyInstance) {
+export const registerInventoryRoutes = fp(async function (app: FastifyInstance) {
   app.get("/inventory", async (request, reply) => {
     if (!request.user) {
       return reply.code(401).send({ message: "Unauthorized" });
@@ -153,4 +154,4 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
        return reply.code(500).send({ message: "Internal server error" });
     }
   });
-}
+});
